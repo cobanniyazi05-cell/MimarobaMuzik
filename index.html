@@ -659,6 +659,11 @@ function OdemelerTab({ students, payments, setPayments, studentCredit }) {
         setAmount("");
         setDate(toISODate(new Date()));
     }
+    function removePayment(id) {
+        if (confirm("Bu ödeme kaydını silmek istediğinize emin misiniz? Öğrencinin ders hakkı buna göre azalacak.")) {
+            setPayments(payments.filter(p => p.id !== id));
+        }
+    }
     const sorted = payments.slice().sort((a, b) => b.date.localeCompare(a.date));
     const studentName = (id) => (students.find(s => s.id === id) || {}).name || "—";
     return (React.createElement("div", null,
@@ -689,12 +694,15 @@ function OdemelerTab({ students, payments, setPayments, studentCredit }) {
                         React.createElement(Th, null, "Tarih"),
                         React.createElement(Th, null, "\u00D6\u011Frenci"),
                         React.createElement(Th, null, "Tutar"),
-                        React.createElement(Th, null, "Not"))),
+                        React.createElement(Th, null, "Not"),
+                        React.createElement(Th, null))),
                 React.createElement("tbody", null, sorted.map(p => (React.createElement("tr", { key: p.id },
                     React.createElement(Td, { style: monoFont }, fmtDateTR(p.date)),
                     React.createElement(Td, null, studentName(p.studentId)),
                     React.createElement(Td, { style: monoFont }, fmtTL(p.amount)),
-                    React.createElement(Td, { style: { color: C.inkSoft } }, p.note))))))))));
+                    React.createElement(Td, { style: { color: C.inkSoft } }, p.note),
+                    React.createElement(Td, { className: "text-right" },
+                        React.createElement("button", { style: btnStyle("danger"), onClick: () => removePayment(p.id) }, "Sil")))))))))));
 }
 /* ---------------- Haftalık Hakedişler ---------------- */
 function computeTeacherWeek(lessons, students, teacherId, weekKey) {
