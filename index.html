@@ -8,7 +8,6 @@
 <!-- React -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <!-- Tailwind CDN kaldırıldı: Babel'in tarayıcı-içi dönüştürücüsüyle çakışıp
      "Cannot use import statement outside a module" hatasına yol açıyordu.
      Aynı görünüm için sade, bağımsız CSS kullanılıyor. -->
@@ -77,855 +76,785 @@
 
 <div id="root"></div>
 
-<script type="text/babel" data-presets="react">
-
-const {useState, useEffect, useMemo, useCallback} = React;
-
+<script>
+"use strict";
+const { useState, useEffect, useMemo, useCallback } = React;
 /* ---------------- Firebase başlatma ---------------- */
-
 let app, db, auth, firebaseReady = false, firebaseError = null;
 try {
-  if (firebaseConfig.apiKey && firebaseConfig.apiKey.indexOf("BURAYA") === -1) {
-    app = firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
-    auth = firebase.auth();
-    firebaseReady = true;
-  }
-} catch (e) {
-  firebaseError = e;
+    if (firebaseConfig.apiKey && firebaseConfig.apiKey.indexOf("BURAYA") === -1) {
+        app = firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        auth = firebase.auth();
+        firebaseReady = true;
+    }
 }
-
+catch (e) {
+    firebaseError = e;
+}
 /* ---------------- yardımcı fonksiyonlar ---------------- */
-
-const uid = (p="id") => p + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
-const GUNLER = ["Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi","Pazar"];
-const ENSTRUMANLAR = ["Piyano","Gitar","Bateri","Keman","Bas Gitar","Yan Flüt","Vokal","Ukulele","Saksafon"];
-
-function pad(n){ return n<10 ? "0"+n : ""+n; }
-function toISODate(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
-function fromISODate(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
-function fmtTL(n){ return (Math.round(n||0)).toLocaleString("tr-TR") + " ₺"; }
-function fmtDateTR(iso){ const d=fromISODate(iso); return pad(d.getDate())+"."+pad(d.getMonth()+1)+"."+d.getFullYear(); }
-
-function getMonday(d){
-  const date = new Date(d);
-  const day = date.getDay();
-  const diff = (day===0 ? -6 : 1-day);
-  date.setDate(date.getDate()+diff);
-  date.setHours(0,0,0,0);
-  return date;
+const uid = (p = "id") => p + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const GUNLER = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
+const ENSTRUMANLAR = ["Piyano", "Gitar", "Bateri", "Keman", "Bas Gitar", "Yan Flüt", "Vokal", "Ukulele", "Saksafon"];
+function pad(n) { return n < 10 ? "0" + n : "" + n; }
+function toISODate(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+function fromISODate(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+function fmtTL(n) { return (Math.round(n || 0)).toLocaleString("tr-TR") + " ₺"; }
+function fmtDateTR(iso) { const d = fromISODate(iso); return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear(); }
+function getMonday(d) {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = (day === 0 ? -6 : 1 - day);
+    date.setDate(date.getDate() + diff);
+    date.setHours(0, 0, 0, 0);
+    return date;
 }
-function weekKeyOf(date){ return toISODate(getMonday(date)); }
-function weekRangeLabel(weekKey){
-  const monday = fromISODate(weekKey);
-  const sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
-  return fmtDateTR(toISODate(monday)) + " – " + fmtDateTR(toISODate(sunday));
+function weekKeyOf(date) { return toISODate(getMonday(date)); }
+function weekRangeLabel(weekKey) {
+    const monday = fromISODate(weekKey);
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+    return fmtDateTR(toISODate(monday)) + " – " + fmtDateTR(toISODate(sunday));
 }
-function dateForWeekday(weekKey, gunIndex){
-  const monday = fromISODate(weekKey);
-  const d = new Date(monday); d.setDate(d.getDate()+gunIndex);
-  return toISODate(d);
+function dateForWeekday(weekKey, gunIndex) {
+    const monday = fromISODate(weekKey);
+    const d = new Date(monday);
+    d.setDate(d.getDate() + gunIndex);
+    return toISODate(d);
 }
-function currentWeekKey(){ return weekKeyOf(new Date()); }
-function shiftWeekKey(weekKey, delta){
-  const monday = fromISODate(weekKey);
-  monday.setDate(monday.getDate() + delta*7);
-  return toISODate(monday);
+function currentWeekKey() { return weekKeyOf(new Date()); }
+function shiftWeekKey(weekKey, delta) {
+    const monday = fromISODate(weekKey);
+    monday.setDate(monday.getDate() + delta * 7);
+    return toISODate(monday);
 }
-function monthKeyOf(iso){ return iso.slice(0,7); }
-function monthLabel(mk){
-  const [y,m]=mk.split("-").map(Number);
-  const ay = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
-  return ay[m-1]+" "+y;
+function monthKeyOf(iso) { return iso.slice(0, 7); }
+function monthLabel(mk) {
+    const [y, m] = mk.split("-").map(Number);
+    const ay = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+    return ay[m - 1] + " " + y;
 }
-
 const UCRET_BIREYSEL = 5400;
 const UCRET_GRUP = 4500;
 const ODEME_KREDI = 4;
 const OGRETMEN_BIREYSEL_SAAT = 650;
 const OGRETMEN_GRUP_OGRENCI = 450;
-
 const C = {
-  bg:"#FAF7F1", surface:"#FFFFFF", ink:"#2B2438", inkSoft:"#6B6478",
-  primary:"#453A67", primaryDark:"#332B4B", accent:"#C79A2B", accentSoft:"#F1E4BE",
-  success:"#3F7D58", successBg:"#E7F2EC", danger:"#B54C3C", dangerBg:"#FBEAE6", line:"#E7E1D6",
+    bg: "#FAF7F1", surface: "#FFFFFF", ink: "#2B2438", inkSoft: "#6B6478",
+    primary: "#453A67", primaryDark: "#332B4B", accent: "#C79A2B", accentSoft: "#F1E4BE",
+    success: "#3F7D58", successBg: "#E7F2EC", danger: "#B54C3C", dangerBg: "#FBEAE6", line: "#E7E1D6",
 };
-const cardStyle = { background:C.surface, border:"1px solid "+C.line, borderRadius:14 };
-const inputStyle = { width:"100%", border:"1px solid "+C.line, borderRadius:8, padding:"8px 10px", fontSize:14, background:"white", color:C.ink };
-const labelStyle = { fontSize:12, fontWeight:600, color:C.inkSoft, display:"block", marginBottom:4 };
-const displayFont = { fontFamily:"Georgia, 'Times New Roman', serif" };
-const monoFont = { fontFamily:"'Courier New', monospace" };
-
-function btnStyle(kind){
-  const base = { borderRadius:10, padding:"8px 14px", fontWeight:600, fontSize:14, border:"none", cursor:"pointer" };
-  if(kind==="primary") return {...base, background:C.primary, color:"white"};
-  if(kind==="accent") return {...base, background:C.accent, color:"white"};
-  if(kind==="danger") return {...base, background:C.dangerBg, color:C.danger};
-  return {...base, background:"transparent", color:C.ink, border:"1px solid "+C.line};
+const cardStyle = { background: C.surface, border: "1px solid " + C.line, borderRadius: 14 };
+const inputStyle = { width: "100%", border: "1px solid " + C.line, borderRadius: 8, padding: "8px 10px", fontSize: 14, background: "white", color: C.ink };
+const labelStyle = { fontSize: 12, fontWeight: 600, color: C.inkSoft, display: "block", marginBottom: 4 };
+const displayFont = { fontFamily: "Georgia, 'Times New Roman', serif" };
+const monoFont = { fontFamily: "'Courier New', monospace" };
+function btnStyle(kind) {
+    const base = { borderRadius: 10, padding: "8px 14px", fontWeight: 600, fontSize: 14, border: "none", cursor: "pointer" };
+    if (kind === "primary")
+        return Object.assign(Object.assign({}, base), { background: C.primary, color: "white" });
+    if (kind === "accent")
+        return Object.assign(Object.assign({}, base), { background: C.accent, color: "white" });
+    if (kind === "danger")
+        return Object.assign(Object.assign({}, base), { background: C.dangerBg, color: C.danger });
+    return Object.assign(Object.assign({}, base), { background: "transparent", color: C.ink, border: "1px solid " + C.line });
 }
-
 /* ---------------- Firestore ile gerçek zamanlı veri kancası ---------------- */
 // Her "liste" (staff, students, lessons, payments, expenses, payouts)
 // data/{ad} dokümanında {items:[...]} olarak saklanır ve onSnapshot ile
 // tüm cihazlarda anlık senkronize olur.
-
-function useFirestoreList(name){
-  const [items, setItems] = useState([]);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    if(!firebaseReady) { setLoaded(true); return; }
-    const ref = db.collection("data").doc(name);
-    const unsub = ref.onSnapshot(snap => {
-      const d = snap.data();
-      setItems(d && d.items ? d.items : []);
-      setLoaded(true);
-    }, err => { console.error("Firestore okuma hatası", name, err); setLoaded(true); });
-    return () => unsub();
-  }, [name]);
-
-  const persist = useCallback(async (next) => {
-    setItems(next); // anında ekranda göster
-    if(!firebaseReady) return;
-    try{ await db.collection("data").doc(name).set({items: next}); }
-    catch(e){ console.error("Firestore yazma hatası", name, e); }
-  }, [name]);
-
-  return [items, persist, loaded];
+function useFirestoreList(name) {
+    const [items, setItems] = useState([]);
+    const [loaded, setLoaded] = useState(false);
+    useEffect(() => {
+        if (!firebaseReady) {
+            setLoaded(true);
+            return;
+        }
+        const ref = db.collection("data").doc(name);
+        const unsub = ref.onSnapshot(snap => {
+            const d = snap.data();
+            setItems(d && d.items ? d.items : []);
+            setLoaded(true);
+        }, err => { console.error("Firestore okuma hatası", name, err); setLoaded(true); });
+        return () => unsub();
+    }, [name]);
+    const persist = useCallback(async (next) => {
+        setItems(next); // anında ekranda göster
+        if (!firebaseReady)
+            return;
+        try {
+            await db.collection("data").doc(name).set({ items: next });
+        }
+        catch (e) {
+            console.error("Firestore yazma hatası", name, e);
+        }
+    }, [name]);
+    return [items, persist, loaded];
 }
-
 /* ---------------- küçük UI bileşenleri ---------------- */
-
-function SectionTitle({eyebrow, title, action}){
-  return (
-    <div className="mb-1">
-      <div className="flex items-end justify-between flex-wrap gap-2">
-        <div>
-          {eyebrow && <div className="text-xs font-semibold uppercase" style={{color:C.accent, letterSpacing:"0.04em"}}>{eyebrow}</div>}
-          <h2 className="text-2xl" style={{...displayFont, color:C.ink}}>{title}</h2>
-        </div>
-        {action}
-      </div>
-      <div style={{height:8, marginTop:6, marginBottom:18, backgroundImage:`repeating-linear-gradient(to bottom, ${C.accent} 0px, ${C.accent} 1px, transparent 1px, transparent 3px)`, opacity:0.55}}></div>
-    </div>
-  );
+function SectionTitle({ eyebrow, title, action }) {
+    return (React.createElement("div", { className: "mb-1" },
+        React.createElement("div", { className: "flex items-end justify-between flex-wrap gap-2" },
+            React.createElement("div", null,
+                eyebrow && React.createElement("div", { className: "text-xs font-semibold uppercase", style: { color: C.accent, letterSpacing: "0.04em" } }, eyebrow),
+                React.createElement("h2", { className: "text-2xl", style: Object.assign(Object.assign({}, displayFont), { color: C.ink }) }, title)),
+            action),
+        React.createElement("div", { style: { height: 8, marginTop: 6, marginBottom: 18, backgroundImage: `repeating-linear-gradient(to bottom, ${C.accent} 0px, ${C.accent} 1px, transparent 1px, transparent 3px)`, opacity: 0.55 } })));
 }
-function Pill({children, tone="neutral"}){
-  const tones = {
-    neutral:{background:"#EFEAE0", color:C.inkSoft},
-    success:{background:C.successBg, color:C.success},
-    danger:{background:C.dangerBg, color:C.danger},
-    accent:{background:C.accentSoft, color:"#8a6a12"},
-    primary:{background:"#EAE7F5", color:C.primary},
-  };
-  return <span className="inline-block" style={{borderRadius:999, padding:"3px 10px", fontSize:12, fontWeight:600, ...tones[tone]}}>{children}</span>;
+function Pill({ children, tone = "neutral" }) {
+    const tones = {
+        neutral: { background: "#EFEAE0", color: C.inkSoft },
+        success: { background: C.successBg, color: C.success },
+        danger: { background: C.dangerBg, color: C.danger },
+        accent: { background: C.accentSoft, color: "#8a6a12" },
+        primary: { background: "#EAE7F5", color: C.primary },
+    };
+    return React.createElement("span", { className: "inline-block", style: Object.assign({ borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 600 }, tones[tone]) }, children);
 }
-function Modal({title, onClose, children, wide}){
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-3 overflow-y-auto" style={{background:"rgba(43,36,56,0.45)"}} onClick={onClose}>
-      <div className={"w-full my-6 " + (wide ? "max-w-2xl" : "max-w-md")} style={{...cardStyle, padding:20}} onClick={e=>e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xl" style={displayFont}>{title}</h3>
-          <button style={btnStyle("ghost")} onClick={onClose}>Kapat</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
+function Modal({ title, onClose, children, wide }) {
+    return (React.createElement("div", { className: "fixed inset-0 z-50 flex items-start justify-center p-3 overflow-y-auto", style: { background: "rgba(43,36,56,0.45)" }, onClick: onClose },
+        React.createElement("div", { className: "w-full my-6 " + (wide ? "max-w-2xl" : "max-w-md"), style: Object.assign(Object.assign({}, cardStyle), { padding: 20 }), onClick: e => e.stopPropagation() },
+            React.createElement("div", { className: "flex items-center justify-between mb-3" },
+                React.createElement("h3", { className: "text-xl", style: displayFont }, title),
+                React.createElement("button", { style: btnStyle("ghost"), onClick: onClose }, "Kapat")),
+            children)));
 }
-function EmptyState({text}){ return <div className="text-center py-10 text-sm" style={{color:C.inkSoft}}>{text}</div>; }
-function Th({children}){ return <th className="text-left" style={{fontSize:12, textTransform:"uppercase", letterSpacing:"0.04em", color:C.inkSoft, fontWeight:600, padding:"8px 10px", borderBottom:"1px solid "+C.line}}>{children}</th>; }
-function Td({children, className, style}){ return <td className={className} style={{padding:10, borderBottom:"1px solid "+C.line, fontSize:14, verticalAlign:"middle", ...style}}>{children}</td>; }
-
+function EmptyState({ text }) { return React.createElement("div", { className: "text-center py-10 text-sm", style: { color: C.inkSoft } }, text); }
+function Th({ children }) { return React.createElement("th", { className: "text-left", style: { fontSize: 12, textTransform: "uppercase", letterSpacing: "0.04em", color: C.inkSoft, fontWeight: 600, padding: "8px 10px", borderBottom: "1px solid " + C.line } }, children); }
+function Td({ children, className, style }) { return React.createElement("td", { className: className, style: Object.assign({ padding: 10, borderBottom: "1px solid " + C.line, fontSize: 14, verticalAlign: "middle" }, style) }, children); }
 /* ---------------- Bağlantı durumu ekranı ---------------- */
-
-function ConnectionGate({children}){
-  const [authReady, setAuthReady] = useState(false);
-  const [authError, setAuthError] = useState(null);
-
-  useEffect(() => {
-    if(!firebaseReady){ setAuthReady(true); return; }
-    auth.signInAnonymously().then(()=>setAuthReady(true)).catch(err=>{ setAuthError(err); setAuthReady(true); });
-  }, []);
-
-  if(!firebaseReady){
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{background:C.bg}}>
-        <div style={{...cardStyle, padding:24, maxWidth:480}}>
-          <h2 className="text-xl mb-2" style={displayFont}>Firebase bağlantısı eksik</h2>
-          <p className="text-sm" style={{color:C.inkSoft}}>
-            Bu dosyanın en üstündeki <code>firebaseConfig</code> bilgileri henüz doldurulmamış.
-            Firebase Console'dan aldığınız proje bilgilerini dosyanın başına yapıştırıp tekrar yükleyin.
-          </p>
-        </div>
-      </div>
-    );
-  }
-  if(!authReady){
-    return <div className="min-h-screen flex items-center justify-center" style={{color:C.inkSoft, background:C.bg}}>Bağlanıyor…</div>;
-  }
-  if(authError){
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{background:C.bg}}>
-        <div style={{...cardStyle, padding:24, maxWidth:480}}>
-          <h2 className="text-xl mb-2" style={displayFont}>Bağlantı hatası</h2>
-          <p className="text-sm" style={{color:C.inkSoft}}>{String(authError.message||authError)}</p>
-        </div>
-      </div>
-    );
-  }
-  return children;
+function ConnectionGate({ children }) {
+    const [authReady, setAuthReady] = useState(false);
+    const [authError, setAuthError] = useState(null);
+    useEffect(() => {
+        if (!firebaseReady) {
+            setAuthReady(true);
+            return;
+        }
+        auth.signInAnonymously().then(() => setAuthReady(true)).catch(err => { setAuthError(err); setAuthReady(true); });
+    }, []);
+    if (!firebaseReady) {
+        return (React.createElement("div", { className: "min-h-screen flex items-center justify-center p-6", style: { background: C.bg } },
+            React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 24, maxWidth: 480 }) },
+                React.createElement("h2", { className: "text-xl mb-2", style: displayFont }, "Firebase ba\u011Flant\u0131s\u0131 eksik"),
+                React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } },
+                    "Bu dosyan\u0131n en \u00FCst\u00FCndeki ",
+                    React.createElement("code", null, "firebaseConfig"),
+                    " bilgileri hen\u00FCz doldurulmam\u0131\u015F. Firebase Console'dan ald\u0131\u011F\u0131n\u0131z proje bilgilerini dosyan\u0131n ba\u015F\u0131na yap\u0131\u015Ft\u0131r\u0131p tekrar y\u00FCkleyin."))));
+    }
+    if (!authReady) {
+        return React.createElement("div", { className: "min-h-screen flex items-center justify-center", style: { color: C.inkSoft, background: C.bg } }, "Ba\u011Flan\u0131yor\u2026");
+    }
+    if (authError) {
+        return (React.createElement("div", { className: "min-h-screen flex items-center justify-center p-6", style: { background: C.bg } },
+            React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 24, maxWidth: 480 }) },
+                React.createElement("h2", { className: "text-xl mb-2", style: displayFont }, "Ba\u011Flant\u0131 hatas\u0131"),
+                React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, String(authError.message || authError)))));
+    }
+    return children;
 }
-
 /* ---------------- Ana Uygulama ---------------- */
-
-function App(){
-  const [staff, setStaff, staffLoaded] = useFirestoreList("staff-list");
-  const [students, setStudents, studentsLoaded] = useFirestoreList("students-list");
-  const [lessons, setLessons, lessonsLoaded] = useFirestoreList("lessons-list");
-  const [payments, setPayments, paymentsLoaded] = useFirestoreList("payments-list");
-  const [expenses, setExpenses, expensesLoaded] = useFirestoreList("expenses-list");
-  const [payouts, setPayouts, payoutsLoaded] = useFirestoreList("payouts-list");
-
-  const allLoaded = staffLoaded && studentsLoaded && lessonsLoaded && paymentsLoaded && expensesLoaded && payoutsLoaded;
-
-  const [role, setRole] = useState("kurucu");
-  const [activeTeacherId, setActiveTeacherId] = useState(null);
-  const [tab, setTab] = useState("panel");
-
-  const teachers = useMemo(() => staff.filter(s=>s.role==="ogretmen"), [staff]);
-
-  useEffect(() => {
-    if(role==="ogretmen" && !activeTeacherId && teachers.length>0) setActiveTeacherId(teachers[0].id);
-  }, [role, teachers, activeTeacherId]);
-
-  const studentCredit = useCallback((studentId) => {
-    const paid = payments.filter(p=>p.studentId===studentId).length * ODEME_KREDI;
-    const used = lessons.filter(l => l.studentId===studentId && (l.status==="yapildi" || l.status==="mazeretsiz")).length;
-    return paid - used;
-  }, [payments, lessons]);
-
-  const ensureWeekLessons = useCallback((weekKey) => {
-    const existingKeys = new Set(lessons.filter(l=>l.weekKey===weekKey && !l.isTelafi).map(l=>l.studentId));
-    const toAdd = [];
-    students.forEach(st => {
-      if(st.status!=="aktif") return;
-      if(st.weeklyDayIndex===undefined || st.weeklyDayIndex===null) return;
-      if(existingKeys.has(st.id)) return;
-      toAdd.push({
-        id: uid("ders"), studentId: st.id, teacherId: st.teacherId,
-        date: dateForWeekday(weekKey, st.weeklyDayIndex), weekKey,
-        status:"bekliyor", isTelafi:false, linkedTo:null, telafiForDate:null,
-      });
-    });
-    if(toAdd.length>0) setLessons([...lessons, ...toAdd]);
-  }, [lessons, students, setLessons]);
-
-  if(!allLoaded){
-    return <div className="min-h-screen flex items-center justify-center" style={{color:C.inkSoft, background:C.bg}}>Veriler yükleniyor…</div>;
-  }
-
-  const teacherById = (id) => staff.find(s=>s.id===id);
-  const studentById = (id) => students.find(s=>s.id===id);
-
-  const TABS_KURUCU = [
-    {k:"panel", t:"Panel"}, {k:"personel", t:"Personel"}, {k:"ogrenciler", t:"Öğrenciler"},
-    {k:"dersler", t:"Ders Takvimi"}, {k:"odemeler", t:"Ödemeler"}, {k:"hakedis", t:"Hakedişler"},
-    {k:"giderler", t:"Giderler"}, {k:"rapor", t:"Kâr/Zarar"},
-  ];
-  const TABS_MUDUR = [{k:"ogrenciler", t:"Öğrenciler"}, {k:"dersler", t:"Ders Takvimi"}, {k:"odemeler", t:"Ödemeler"}];
-  const TABS_OGRETMEN = [{k:"ogretmen-dersler", t:"Derslerim"}, {k:"ogretmen-hakedis", t:"Hakedişim"}];
-  const tabs = role==="kurucu" ? TABS_KURUCU : role==="mudur" ? TABS_MUDUR : TABS_OGRETMEN;
-
-  return (
-    <div className="min-h-screen" style={{background:C.bg, color:C.ink}}>
-      <header style={{background:C.primary}} className="text-white sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2">
-            <div className="text-2xl" style={{...displayFont, letterSpacing:"0.02em"}}>Mimaroba Müzik Kursu</div>
-            <span className="text-xs opacity-70 hidden sm:inline">Kurs Yönetim Sistemi</span>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <select value={role} onChange={e=>{setRole(e.target.value); setActiveTeacherId(null);}}
-              className="text-sm" style={{background:"rgba(255,255,255,0.12)", color:"white", border:"1px solid rgba(255,255,255,0.3)", borderRadius:8, padding:"6px 10px"}}>
-              <option value="kurucu" style={{color:"#000"}}>Kurucu girişi</option>
-              <option value="mudur" style={{color:"#000"}}>Müdür girişi</option>
-              <option value="ogretmen" style={{color:"#000"}}>Öğretmen girişi</option>
-            </select>
-            {role==="ogretmen" && (
-              <select value={activeTeacherId||""} onChange={e=>setActiveTeacherId(e.target.value)}
-                className="text-sm" style={{background:"rgba(255,255,255,0.12)", color:"white", border:"1px solid rgba(255,255,255,0.3)", borderRadius:8, padding:"6px 10px"}}>
-                <option value="" style={{color:"#000"}}>Öğretmen seç</option>
-                {teachers.map(t=> <option key={t.id} value={t.id} style={{color:"#000"}}>{t.name}</option>)}
-              </select>
-            )}
-          </div>
-        </div>
-        <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto pb-2">
-          {tabs.map(x => (
-            <button key={x.k} onClick={()=>setTab(x.k)} className="text-sm whitespace-nowrap px-3 py-1.5"
-              style={{borderRadius:"8px 8px 0 0", background: tab===x.k ? C.bg : "transparent", color: tab===x.k ? C.primary : "rgba(255,255,255,0.85)", fontWeight: tab===x.k ? 700 : 500, border:"none", cursor:"pointer"}}>
-              {x.t}
-            </button>
-          ))}
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        {tab==="panel" && <PanelTab {...{staff, students, lessons, payments, studentCredit}} />}
-        {tab==="personel" && <PersonelTab {...{staff, setStaff}} />}
-        {tab==="ogrenciler" && <OgrencilerTab {...{students, setStudents, teachers, payments, setPayments, studentCredit}} />}
-        {tab==="dersler" && <DersTakvimiTab {...{lessons, setLessons, students, ensureWeekLessons, teacherById, studentById}} />}
-        {tab==="odemeler" && <OdemelerTab {...{students, payments, setPayments, studentCredit}} />}
-        {tab==="hakedis" && <HakedisTab {...{lessons, students, teachers, payouts, setPayouts}} />}
-        {tab==="giderler" && <GiderlerTab {...{expenses, setExpenses}} />}
-        {tab==="rapor" && <RaporTab {...{payments, payouts, expenses}} />}
-        {tab==="ogretmen-dersler" && (activeTeacherId
-          ? <DersTakvimiTab {...{lessons, setLessons, students, ensureWeekLessons, teacherById, studentById}} onlyTeacherId={activeTeacherId} />
-          : <EmptyState text="Üstteki menüden bir öğretmen seçin." />)}
-        {tab==="ogretmen-hakedis" && (activeTeacherId
-          ? <HakedisTab {...{lessons, students, teachers, payouts, setPayouts}} onlyTeacherId={activeTeacherId} />
-          : <EmptyState text="Üstteki menüden bir öğretmen seçin." />)}
-      </main>
-      <footer className="text-center text-xs py-8" style={{color:C.inkSoft}}>
-        Veriler gerçek zamanlı olarak ortak veritabanında saklanır — tüm cihazlarda anında senkronize olur.
-      </footer>
-    </div>
-  );
+function App() {
+    const [staff, setStaff, staffLoaded] = useFirestoreList("staff-list");
+    const [students, setStudents, studentsLoaded] = useFirestoreList("students-list");
+    const [lessons, setLessons, lessonsLoaded] = useFirestoreList("lessons-list");
+    const [payments, setPayments, paymentsLoaded] = useFirestoreList("payments-list");
+    const [expenses, setExpenses, expensesLoaded] = useFirestoreList("expenses-list");
+    const [payouts, setPayouts, payoutsLoaded] = useFirestoreList("payouts-list");
+    const allLoaded = staffLoaded && studentsLoaded && lessonsLoaded && paymentsLoaded && expensesLoaded && payoutsLoaded;
+    const [role, setRole] = useState("kurucu");
+    const [activeTeacherId, setActiveTeacherId] = useState(null);
+    const [tab, setTab] = useState("panel");
+    const teachers = useMemo(() => staff.filter(s => s.role === "ogretmen"), [staff]);
+    useEffect(() => {
+        if (role === "ogretmen" && !activeTeacherId && teachers.length > 0)
+            setActiveTeacherId(teachers[0].id);
+    }, [role, teachers, activeTeacherId]);
+    const studentCredit = useCallback((studentId) => {
+        const paid = payments.filter(p => p.studentId === studentId).length * ODEME_KREDI;
+        const used = lessons.filter(l => l.studentId === studentId && (l.status === "yapildi" || l.status === "mazeretsiz")).length;
+        return paid - used;
+    }, [payments, lessons]);
+    const ensureWeekLessons = useCallback((weekKey) => {
+        const existingKeys = new Set(lessons.filter(l => l.weekKey === weekKey && !l.isTelafi).map(l => l.studentId));
+        const toAdd = [];
+        students.forEach(st => {
+            if (st.status !== "aktif")
+                return;
+            if (st.weeklyDayIndex === undefined || st.weeklyDayIndex === null)
+                return;
+            if (existingKeys.has(st.id))
+                return;
+            toAdd.push({
+                id: uid("ders"), studentId: st.id, teacherId: st.teacherId,
+                date: dateForWeekday(weekKey, st.weeklyDayIndex), weekKey,
+                status: "bekliyor", isTelafi: false, linkedTo: null, telafiForDate: null,
+            });
+        });
+        if (toAdd.length > 0)
+            setLessons([...lessons, ...toAdd]);
+    }, [lessons, students, setLessons]);
+    if (!allLoaded) {
+        return React.createElement("div", { className: "min-h-screen flex items-center justify-center", style: { color: C.inkSoft, background: C.bg } }, "Veriler y\u00FCkleniyor\u2026");
+    }
+    const teacherById = (id) => staff.find(s => s.id === id);
+    const studentById = (id) => students.find(s => s.id === id);
+    const TABS_KURUCU = [
+        { k: "panel", t: "Panel" }, { k: "personel", t: "Personel" }, { k: "ogrenciler", t: "Öğrenciler" },
+        { k: "dersler", t: "Ders Takvimi" }, { k: "odemeler", t: "Ödemeler" }, { k: "hakedis", t: "Hakedişler" },
+        { k: "giderler", t: "Giderler" }, { k: "rapor", t: "Kâr/Zarar" },
+    ];
+    const TABS_MUDUR = [{ k: "ogrenciler", t: "Öğrenciler" }, { k: "dersler", t: "Ders Takvimi" }, { k: "odemeler", t: "Ödemeler" }];
+    const TABS_OGRETMEN = [{ k: "ogretmen-dersler", t: "Derslerim" }, { k: "ogretmen-hakedis", t: "Hakedişim" }];
+    const tabs = role === "kurucu" ? TABS_KURUCU : role === "mudur" ? TABS_MUDUR : TABS_OGRETMEN;
+    return (React.createElement("div", { className: "min-h-screen", style: { background: C.bg, color: C.ink } },
+        React.createElement("header", { style: { background: C.primary }, className: "text-white sticky top-0 z-30" },
+            React.createElement("div", { className: "max-w-6xl mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-3" },
+                React.createElement("div", { className: "flex items-center gap-2" },
+                    React.createElement("div", { className: "text-2xl", style: Object.assign(Object.assign({}, displayFont), { letterSpacing: "0.02em" }) }, "Mimaroba M\u00FCzik Kursu"),
+                    React.createElement("span", { className: "text-xs opacity-70 hidden sm:inline" }, "Kurs Y\u00F6netim Sistemi")),
+                React.createElement("div", { className: "flex items-center gap-2 flex-wrap" },
+                    React.createElement("select", { value: role, onChange: e => { setRole(e.target.value); setActiveTeacherId(null); }, className: "text-sm", style: { background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "6px 10px" } },
+                        React.createElement("option", { value: "kurucu", style: { color: "#000" } }, "Kurucu giri\u015Fi"),
+                        React.createElement("option", { value: "mudur", style: { color: "#000" } }, "M\u00FCd\u00FCr giri\u015Fi"),
+                        React.createElement("option", { value: "ogretmen", style: { color: "#000" } }, "\u00D6\u011Fretmen giri\u015Fi")),
+                    role === "ogretmen" && (React.createElement("select", { value: activeTeacherId || "", onChange: e => setActiveTeacherId(e.target.value), className: "text-sm", style: { background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "6px 10px" } },
+                        React.createElement("option", { value: "", style: { color: "#000" } }, "\u00D6\u011Fretmen se\u00E7"),
+                        teachers.map(t => React.createElement("option", { key: t.id, value: t.id, style: { color: "#000" } }, t.name)))))),
+            React.createElement("div", { className: "max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto pb-2" }, tabs.map(x => (React.createElement("button", { key: x.k, onClick: () => setTab(x.k), className: "text-sm whitespace-nowrap px-3 py-1.5", style: { borderRadius: "8px 8px 0 0", background: tab === x.k ? C.bg : "transparent", color: tab === x.k ? C.primary : "rgba(255,255,255,0.85)", fontWeight: tab === x.k ? 700 : 500, border: "none", cursor: "pointer" } }, x.t))))),
+        React.createElement("main", { className: "max-w-6xl mx-auto px-4 py-6" },
+            tab === "panel" && React.createElement(PanelTab, { staff, students, lessons, payments, studentCredit }),
+            tab === "personel" && React.createElement(PersonelTab, { staff, setStaff }),
+            tab === "ogrenciler" && React.createElement(OgrencilerTab, { students, setStudents, teachers, payments, setPayments, studentCredit }),
+            tab === "dersler" && React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById }),
+            tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit }),
+            tab === "hakedis" && React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts }),
+            tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses }),
+            tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses }),
+            tab === "ogretmen-dersler" && (activeTeacherId
+                ? React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId: activeTeacherId })
+                : React.createElement(EmptyState, { text: "\u00DCstteki men\u00FCden bir \u00F6\u011Fretmen se\u00E7in." })),
+            tab === "ogretmen-hakedis" && (activeTeacherId
+                ? React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts, onlyTeacherId: activeTeacherId })
+                : React.createElement(EmptyState, { text: "\u00DCstteki men\u00FCden bir \u00F6\u011Fretmen se\u00E7in." }))),
+        React.createElement("footer", { className: "text-center text-xs py-8", style: { color: C.inkSoft } }, "Veriler ger\u00E7ek zamanl\u0131 olarak ortak veritaban\u0131nda saklan\u0131r \u2014 t\u00FCm cihazlarda an\u0131nda senkronize olur.")));
 }
-
 /* ---------------- Panel ---------------- */
-
-function PanelTab({staff, students, lessons, payments, studentCredit}){
-  const aktifOgrenci = students.filter(s=>s.status==="aktif");
-  const borcluSayisi = aktifOgrenci.filter(s=>studentCredit(s.id)<0).length;
-  const bugun = toISODate(new Date());
-  const bugunkuDersler = lessons.filter(l=>l.date===bugun);
-  const thisWeek = currentWeekKey();
-  const buHaftaGelir = payments.filter(p=> weekKeyOf(fromISODate(p.date))===thisWeek).reduce((a,p)=>a+p.amount,0);
-
-  return (
-    <div>
-      <SectionTitle eyebrow="Genel Bakış" title="Panel" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Aktif Öğrenci" value={aktifOgrenci.length} />
-        <StatCard label="Öğretmen Sayısı" value={staff.filter(s=>s.role==="ogretmen").length} />
-        <StatCard label="Borçlu Öğrenci" value={borcluSayisi} tone={borcluSayisi>0 ? "danger":"success"} />
-        <StatCard label="Bugünkü Ders" value={bugunkuDersler.length} />
-      </div>
-      <div className="grid md:grid-cols-2 gap-4">
-        <div style={{...cardStyle, padding:16}}>
-          <h3 className="text-lg mb-2" style={displayFont}>Bu haftanın tahsilatı</h3>
-          <div className="text-2xl" style={{...monoFont, color:C.primary}}>{fmtTL(buHaftaGelir)}</div>
-          <p className="text-xs mt-1" style={{color:C.inkSoft}}>{weekRangeLabel(thisWeek)}</p>
-        </div>
-        <div style={{...cardStyle, padding:16}}>
-          <h3 className="text-lg mb-2" style={displayFont}>Borçlu öğrenciler</h3>
-          {borcluSayisi===0 ? <p className="text-sm" style={{color:C.inkSoft}}>Şu anda borçlu öğrenci yok.</p> : (
-            <ul className="text-sm space-y-1">
-              {aktifOgrenci.filter(s=>studentCredit(s.id)<0).slice(0,6).map(s=>(
-                <li key={s.id} className="flex justify-between"><span>{s.name}</span><Pill tone="danger">{Math.abs(studentCredit(s.id))} ders borçlu</Pill></li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+function PanelTab({ staff, students, lessons, payments, studentCredit }) {
+    const aktifOgrenci = students.filter(s => s.status === "aktif");
+    const borcluSayisi = aktifOgrenci.filter(s => studentCredit(s.id) < 0).length;
+    const bugun = toISODate(new Date());
+    const bugunkuDersler = lessons.filter(l => l.date === bugun);
+    const thisWeek = currentWeekKey();
+    const buHaftaGelir = payments.filter(p => weekKeyOf(fromISODate(p.date)) === thisWeek).reduce((a, p) => a + p.amount, 0);
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "Genel Bak\u0131\u015F", title: "Panel" }),
+        React.createElement("div", { className: "grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" },
+            React.createElement(StatCard, { label: "Aktif \u00D6\u011Frenci", value: aktifOgrenci.length }),
+            React.createElement(StatCard, { label: "\u00D6\u011Fretmen Say\u0131s\u0131", value: staff.filter(s => s.role === "ogretmen").length }),
+            React.createElement(StatCard, { label: "Bor\u00E7lu \u00D6\u011Frenci", value: borcluSayisi, tone: borcluSayisi > 0 ? "danger" : "success" }),
+            React.createElement(StatCard, { label: "Bug\u00FCnk\u00FC Ders", value: bugunkuDersler.length })),
+        React.createElement("div", { className: "grid md:grid-cols-2 gap-4" },
+            React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
+                React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Bu haftan\u0131n tahsilat\u0131"),
+                React.createElement("div", { className: "text-2xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buHaftaGelir)),
+                React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, weekRangeLabel(thisWeek))),
+            React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
+                React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Bor\u00E7lu \u00F6\u011Frenciler"),
+                borcluSayisi === 0 ? React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, "\u015Eu anda bor\u00E7lu \u00F6\u011Frenci yok.") : (React.createElement("ul", { className: "text-sm space-y-1" }, aktifOgrenci.filter(s => studentCredit(s.id) < 0).slice(0, 6).map(s => (React.createElement("li", { key: s.id, className: "flex justify-between" },
+                    React.createElement("span", null, s.name),
+                    React.createElement(Pill, { tone: "danger" },
+                        Math.abs(studentCredit(s.id)),
+                        " ders bor\u00E7lu"))))))))));
 }
-function StatCard({label, value, tone}){
-  const color = tone==="danger" ? C.danger : tone==="success" ? C.success : C.ink;
-  return (
-    <div style={{...cardStyle, padding:16}}>
-      <div className="text-xs font-semibold uppercase" style={{color:C.inkSoft}}>{label}</div>
-      <div className="text-3xl mt-1" style={{...displayFont, color}}>{value}</div>
-    </div>
-  );
+function StatCard({ label, value, tone }) {
+    const color = tone === "danger" ? C.danger : tone === "success" ? C.success : C.ink;
+    return (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
+        React.createElement("div", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, label),
+        React.createElement("div", { className: "text-3xl mt-1", style: Object.assign(Object.assign({}, displayFont), { color }) }, value)));
 }
-
 /* ---------------- Personel ---------------- */
-
-function PersonelTab({staff, setStaff}){
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const blankStaff = () => ({role:"ogretmen", name:"", phone:"", instruments:[]});
-  const [form, setForm] = useState(blankStaff());
-
-  function openNew(){ setForm(blankStaff()); setEditing(null); setShowForm(true); }
-  function openEdit(s){ setForm({...s}); setEditing(s.id); setShowForm(true); }
-  function save(){
-    if(!form.name.trim()) return;
-    if(editing) setStaff(staff.map(s => s.id===editing ? {...form, id:editing} : s));
-    else setStaff([...staff, {...form, id: uid("stf")}]);
-    setShowForm(false);
-  }
-  function remove(id){ if(confirm("Bu kişiyi silmek istediğinize emin misiniz?")) setStaff(staff.filter(s=>s.id!==id)); }
-  function toggleInstrument(ins){
-    setForm(f => { const has=f.instruments.includes(ins); return {...f, instruments: has ? f.instruments.filter(i=>i!==ins) : [...f.instruments, ins]}; });
-  }
-  const roleLabel = {sahip:"Kurs Sahibi", mudur:"Kurs Müdürü", ogretmen:"Öğretmen"};
-  const roleTone = {sahip:"accent", mudur:"primary", ogretmen:"success"};
-
-  return (
-    <div>
-      <SectionTitle eyebrow="Kadro" title="Personel" action={<button style={btnStyle("primary")} onClick={openNew}>+ Yeni Kişi</button>} />
-      {staff.length===0 ? <EmptyState text="Henüz personel eklenmedi." /> : (
-        <div style={{...cardStyle, overflowX:"auto"}}>
-          <table className="w-full">
-            <thead><tr><Th>Ad Soyad</Th><Th>Rol</Th><Th>Telefon</Th><Th>Enstrümanlar</Th><Th></Th></tr></thead>
-            <tbody>
-              {staff.map(s => (
-                <tr key={s.id}>
-                  <Td className="font-medium">{s.name}</Td>
-                  <Td><Pill tone={roleTone[s.role]}>{roleLabel[s.role]}</Pill></Td>
-                  <Td>{s.phone || "—"}</Td>
-                  <Td>{s.role==="ogretmen" ? (s.instruments||[]).join(", ") || "—" : "—"}</Td>
-                  <Td className="text-right whitespace-nowrap">
-                    <button style={{...btnStyle("ghost"), marginRight:4}} onClick={()=>openEdit(s)}>Düzenle</button>
-                    <button style={btnStyle("danger")} onClick={()=>remove(s.id)}>Sil</button>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {showForm && (
-        <Modal title={editing ? "Personeli Düzenle" : "Yeni Personel"} onClose={()=>setShowForm(false)}>
-          <div className="space-y-3">
-            <div><label style={labelStyle}>Rol</label>
-              <select style={inputStyle} value={form.role} onChange={e=>setForm({...form, role:e.target.value})}>
-                <option value="sahip">Kurs Sahibi</option><option value="mudur">Kurs Müdürü</option><option value="ogretmen">Öğretmen</option>
-              </select>
-            </div>
-            <div><label style={labelStyle}>Ad Soyad</label><input style={inputStyle} type="text" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} /></div>
-            <div><label style={labelStyle}>Telefon</label><input style={inputStyle} type="tel" value={form.phone} onChange={e=>setForm({...form, phone:e.target.value})} /></div>
-            {form.role==="ogretmen" && (
-              <div><label style={labelStyle}>Verebileceği Enstrümanlar</label>
-                <div className="flex flex-wrap gap-2">
-                  {ENSTRUMANLAR.map(ins => (
-                    <button type="button" key={ins} onClick={()=>toggleInstrument(ins)}
-                      style={{borderRadius:10, padding:"8px 14px", fontSize:14, fontWeight:600, cursor:"pointer", background: form.instruments.includes(ins) ? C.accentSoft : "transparent", border:"1px solid "+(form.instruments.includes(ins) ? C.accent : C.line), color: form.instruments.includes(ins) ? "#8a6a12" : C.ink}}>
-                      {ins}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="flex justify-end gap-2 pt-2">
-              <button style={btnStyle("ghost")} onClick={()=>setShowForm(false)}>Vazgeç</button>
-              <button style={btnStyle("primary")} onClick={save}>Kaydet</button>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
+function PersonelTab({ staff, setStaff }) {
+    const [showForm, setShowForm] = useState(false);
+    const [editing, setEditing] = useState(null);
+    const blankStaff = () => ({ role: "ogretmen", name: "", phone: "", instruments: [] });
+    const [form, setForm] = useState(blankStaff());
+    function openNew() { setForm(blankStaff()); setEditing(null); setShowForm(true); }
+    function openEdit(s) { setForm(Object.assign({}, s)); setEditing(s.id); setShowForm(true); }
+    function save() {
+        if (!form.name.trim())
+            return;
+        if (editing)
+            setStaff(staff.map(s => s.id === editing ? Object.assign(Object.assign({}, form), { id: editing }) : s));
+        else
+            setStaff([...staff, Object.assign(Object.assign({}, form), { id: uid("stf") })]);
+        setShowForm(false);
+    }
+    function remove(id) { if (confirm("Bu kişiyi silmek istediğinize emin misiniz?"))
+        setStaff(staff.filter(s => s.id !== id)); }
+    function toggleInstrument(ins) {
+        setForm(f => { const has = f.instruments.includes(ins); return Object.assign(Object.assign({}, f), { instruments: has ? f.instruments.filter(i => i !== ins) : [...f.instruments, ins] }); });
+    }
+    const roleLabel = { sahip: "Kurs Sahibi", mudur: "Kurs Müdürü", ogretmen: "Öğretmen" };
+    const roleTone = { sahip: "accent", mudur: "primary", ogretmen: "success" };
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "Kadro", title: "Personel", action: React.createElement("button", { style: btnStyle("primary"), onClick: openNew }, "+ Yeni Ki\u015Fi") }),
+        staff.length === 0 ? React.createElement(EmptyState, { text: "Hen\u00FCz personel eklenmedi." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
+            React.createElement("table", { className: "w-full" },
+                React.createElement("thead", null,
+                    React.createElement("tr", null,
+                        React.createElement(Th, null, "Ad Soyad"),
+                        React.createElement(Th, null, "Rol"),
+                        React.createElement(Th, null, "Telefon"),
+                        React.createElement(Th, null, "Enstr\u00FCmanlar"),
+                        React.createElement(Th, null))),
+                React.createElement("tbody", null, staff.map(s => (React.createElement("tr", { key: s.id },
+                    React.createElement(Td, { className: "font-medium" }, s.name),
+                    React.createElement(Td, null,
+                        React.createElement(Pill, { tone: roleTone[s.role] }, roleLabel[s.role])),
+                    React.createElement(Td, null, s.phone || "—"),
+                    React.createElement(Td, null, s.role === "ogretmen" ? (s.instruments || []).join(", ") || "—" : "—"),
+                    React.createElement(Td, { className: "text-right whitespace-nowrap" },
+                        React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("ghost")), { marginRight: 4 }), onClick: () => openEdit(s) }, "D\u00FCzenle"),
+                        React.createElement("button", { style: btnStyle("danger"), onClick: () => remove(s.id) }, "Sil"))))))))),
+        showForm && (React.createElement(Modal, { title: editing ? "Personeli Düzenle" : "Yeni Personel", onClose: () => setShowForm(false) },
+            React.createElement("div", { className: "space-y-3" },
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Rol"),
+                    React.createElement("select", { style: inputStyle, value: form.role, onChange: e => setForm(Object.assign(Object.assign({}, form), { role: e.target.value })) },
+                        React.createElement("option", { value: "sahip" }, "Kurs Sahibi"),
+                        React.createElement("option", { value: "mudur" }, "Kurs M\u00FCd\u00FCr\u00FC"),
+                        React.createElement("option", { value: "ogretmen" }, "\u00D6\u011Fretmen"))),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Ad Soyad"),
+                    React.createElement("input", { style: inputStyle, type: "text", value: form.name, onChange: e => setForm(Object.assign(Object.assign({}, form), { name: e.target.value })) })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Telefon"),
+                    React.createElement("input", { style: inputStyle, type: "tel", value: form.phone, onChange: e => setForm(Object.assign(Object.assign({}, form), { phone: e.target.value })) })),
+                form.role === "ogretmen" && (React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Verebilece\u011Fi Enstr\u00FCmanlar"),
+                    React.createElement("div", { className: "flex flex-wrap gap-2" }, ENSTRUMANLAR.map(ins => (React.createElement("button", { type: "button", key: ins, onClick: () => toggleInstrument(ins), style: { borderRadius: 10, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", background: form.instruments.includes(ins) ? C.accentSoft : "transparent", border: "1px solid " + (form.instruments.includes(ins) ? C.accent : C.line), color: form.instruments.includes(ins) ? "#8a6a12" : C.ink } }, ins)))))),
+                React.createElement("div", { className: "flex justify-end gap-2 pt-2" },
+                    React.createElement("button", { style: btnStyle("ghost"), onClick: () => setShowForm(false) }, "Vazge\u00E7"),
+                    React.createElement("button", { style: btnStyle("primary"), onClick: save }, "Kaydet")))))));
 }
-
 /* ---------------- Öğrenciler ---------------- */
-
-function OgrencilerTab({students, setStudents, teachers, payments, setPayments, studentCredit}){
-  const [showForm, setShowForm] = useState(false);
-  const [detail, setDetail] = useState(null);
-  const [filter, setFilter] = useState("aktif");
-  const blank = () => ({
-    name:"", parentName:"", phone:"", address:"",
-    instrument: ENSTRUMANLAR[0], courseType:"bireysel",
-    teacherId:"", fee: UCRET_BIREYSEL, registerDate: toISODate(new Date()),
-    weeklyDayIndex:0, status:"aktif",
-  });
-  const [form, setForm] = useState(blank());
-  function openNew(){ setForm(blank()); setShowForm(true); }
-  function save(){
-    if(!form.name.trim() || !form.teacherId) return;
-    const newStudent = {...form, id: uid("ogr"), fee: Number(form.fee)};
-    setStudents([...students, newStudent]);
-    setPayments([...payments, {id: uid("ode"), studentId:newStudent.id, amount:Number(form.fee), date:form.registerDate, note:"İlk kayıt aidatı"}]);
-    setShowForm(false);
-  }
-  function markLeft(id){ if(confirm("Bu öğrenciyi 'ayrıldı' olarak işaretlemek istediğinize emin misiniz?")) setStudents(students.map(s=>s.id===id ? {...s, status:"ayrildi"} : s)); }
-  const filtered = students.filter(s => filter==="tumu" ? true : s.status===filter);
-  const teacherName = (id) => (teachers.find(s=>s.id===id)||{}).name || "—";
-
-  return (
-    <div>
-      <SectionTitle eyebrow="Kayıt" title="Öğrenciler" action={<button style={btnStyle("primary")} onClick={openNew}>+ Yeni Öğrenci Kaydı</button>} />
-      <div className="flex gap-2 mb-3">
-        {[["aktif","Aktif"],["ayrildi","Ayrılan"],["tumu","Tümü"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setFilter(k)} style={{borderRadius:10, padding:"8px 14px", fontWeight:600, fontSize:14, cursor:"pointer", background: filter===k?C.primary:"transparent", color: filter===k?"white":C.ink, border:"1px solid "+C.line}}>{l}</button>
-        ))}
-      </div>
-      {filtered.length===0 ? <EmptyState text="Kayıtlı öğrenci bulunamadı." /> : (
-        <div style={{...cardStyle, overflowX:"auto"}}>
-          <table className="w-full">
-            <thead><tr><Th>Öğrenci</Th><Th>Enstrüman</Th><Th>Tür</Th><Th>Öğretmen</Th><Th>Ders Günü</Th><Th>Aidat</Th><Th>Ders Hakkı</Th><Th></Th></tr></thead>
-            <tbody>
-              {filtered.map(s => {
-                const credit = studentCredit(s.id);
-                return (
-                  <tr key={s.id}>
-                    <Td>
-                      <button style={{textDecoration:"underline dotted", background:"none", border:"none", cursor:"pointer", color:C.ink, fontSize:14, fontWeight:500}} onClick={()=>setDetail(s.id)}>{s.name}</button>
-                      {s.status==="ayrildi" && <div><Pill tone="danger">Ayrıldı</Pill></div>}
-                    </Td>
-                    <Td>{s.instrument}</Td>
-                    <Td>{s.courseType==="bireysel" ? "Bireysel" : "Grup"}</Td>
-                    <Td>{teacherName(s.teacherId)}</Td>
-                    <Td>{GUNLER[s.weeklyDayIndex]}</Td>
-                    <Td style={monoFont}>{fmtTL(s.fee)}</Td>
-                    <Td>{credit<0 ? <Pill tone="danger">{Math.abs(credit)} ders borçlu</Pill> : <Pill tone="success">{credit} ders hakkı</Pill>}</Td>
-                    <Td className="text-right whitespace-nowrap">{s.status==="aktif" && <button style={btnStyle("danger")} onClick={()=>markLeft(s.id)}>Ayrıldı</button>}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {showForm && (
-        <Modal title="Yeni Öğrenci Kaydı" wide onClose={()=>setShowForm(false)}>
-          <div className="grid md:grid-cols-2 gap-3">
-            <div><label style={labelStyle}>Öğrenci Adı Soyadı</label><input style={inputStyle} type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} /></div>
-            <div><label style={labelStyle}>Veli Adı Soyadı</label><input style={inputStyle} type="text" value={form.parentName} onChange={e=>setForm({...form,parentName:e.target.value})} /></div>
-            <div><label style={labelStyle}>Telefon</label><input style={inputStyle} type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} /></div>
-            <div><label style={labelStyle}>Kayıt Tarihi</label><input style={inputStyle} type="date" value={form.registerDate} onChange={e=>setForm({...form,registerDate:e.target.value})} /></div>
-            <div className="md:col-span-2"><label style={labelStyle}>Adres</label><textarea style={inputStyle} rows="2" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}></textarea></div>
-            <div><label style={labelStyle}>Enstrüman</label>
-              <select style={inputStyle} value={form.instrument} onChange={e=>setForm({...form,instrument:e.target.value})}>{ENSTRUMANLAR.map(i => <option key={i} value={i}>{i}</option>)}</select>
-            </div>
-            <div><label style={labelStyle}>Ders Türü</label>
-              <select style={inputStyle} value={form.courseType} onChange={e=>{const ct=e.target.value; setForm({...form, courseType:ct, fee: ct==="bireysel"?UCRET_BIREYSEL:UCRET_GRUP});}}>
-                <option value="bireysel">Bireysel</option><option value="grup">Grup</option>
-              </select>
-            </div>
-            <div><label style={labelStyle}>Öğretmen</label>
-              <select style={inputStyle} value={form.teacherId} onChange={e=>setForm({...form,teacherId:e.target.value})}>
-                <option value="">Seçin…</option>
-                {teachers.filter(t=>(t.instruments||[]).includes(form.instrument)).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              {teachers.filter(t=>(t.instruments||[]).includes(form.instrument)).length===0 && <p className="text-xs mt-1" style={{color:C.danger}}>Bu enstrümanı verebilen öğretmen kayıtlı değil.</p>}
-            </div>
-            <div><label style={labelStyle}>Haftalık Ders Günü</label>
-              <select style={inputStyle} value={form.weeklyDayIndex} onChange={e=>setForm({...form,weeklyDayIndex:Number(e.target.value)})}>{GUNLER.map((g,i)=><option key={g} value={i}>{g}</option>)}</select>
-            </div>
-            <div><label style={labelStyle}>Aylık Aidat (₺) — 4 ders hakkı</label>
-              <input style={inputStyle} type="number" value={form.fee} onChange={e=>setForm({...form,fee:e.target.value})} />
-              <p className="text-xs mt-1" style={{color:C.inkSoft}}>Standart: bireysel {fmtTL(UCRET_BIREYSEL)}, grup {fmtTL(UCRET_GRUP)}.</p>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-4">
-            <button style={btnStyle("ghost")} onClick={()=>setShowForm(false)}>Vazgeç</button>
-            <button style={btnStyle("primary")} onClick={save}>Kaydı Tamamla</button>
-          </div>
-        </Modal>
-      )}
-      {detail && <StudentDetailModal student={students.find(s=>s.id===detail)} teacherName={teacherName} onClose={()=>setDetail(null)} />}
-    </div>
-  );
+function OgrencilerTab({ students, setStudents, teachers, payments, setPayments, studentCredit }) {
+    const [showForm, setShowForm] = useState(false);
+    const [detail, setDetail] = useState(null);
+    const [filter, setFilter] = useState("aktif");
+    const blank = () => ({
+        name: "", parentName: "", phone: "", address: "",
+        instrument: ENSTRUMANLAR[0], courseType: "bireysel",
+        teacherId: "", fee: UCRET_BIREYSEL, registerDate: toISODate(new Date()),
+        weeklyDayIndex: 0, status: "aktif",
+    });
+    const [form, setForm] = useState(blank());
+    function openNew() { setForm(blank()); setShowForm(true); }
+    function save() {
+        if (!form.name.trim() || !form.teacherId)
+            return;
+        const newStudent = Object.assign(Object.assign({}, form), { id: uid("ogr"), fee: Number(form.fee) });
+        setStudents([...students, newStudent]);
+        setPayments([...payments, { id: uid("ode"), studentId: newStudent.id, amount: Number(form.fee), date: form.registerDate, note: "İlk kayıt aidatı" }]);
+        setShowForm(false);
+    }
+    function markLeft(id) { if (confirm("Bu öğrenciyi 'ayrıldı' olarak işaretlemek istediğinize emin misiniz?"))
+        setStudents(students.map(s => s.id === id ? Object.assign(Object.assign({}, s), { status: "ayrildi" }) : s)); }
+    const filtered = students.filter(s => filter === "tumu" ? true : s.status === filter);
+    const teacherName = (id) => (teachers.find(s => s.id === id) || {}).name || "—";
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "Kay\u0131t", title: "\u00D6\u011Frenciler", action: React.createElement("button", { style: btnStyle("primary"), onClick: openNew }, "+ Yeni \u00D6\u011Frenci Kayd\u0131") }),
+        React.createElement("div", { className: "flex gap-2 mb-3" }, [["aktif", "Aktif"], ["ayrildi", "Ayrılan"], ["tumu", "Tümü"]].map(([k, l]) => (React.createElement("button", { key: k, onClick: () => setFilter(k), style: { borderRadius: 10, padding: "8px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", background: filter === k ? C.primary : "transparent", color: filter === k ? "white" : C.ink, border: "1px solid " + C.line } }, l)))),
+        filtered.length === 0 ? React.createElement(EmptyState, { text: "Kay\u0131tl\u0131 \u00F6\u011Frenci bulunamad\u0131." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
+            React.createElement("table", { className: "w-full" },
+                React.createElement("thead", null,
+                    React.createElement("tr", null,
+                        React.createElement(Th, null, "\u00D6\u011Frenci"),
+                        React.createElement(Th, null, "Enstr\u00FCman"),
+                        React.createElement(Th, null, "T\u00FCr"),
+                        React.createElement(Th, null, "\u00D6\u011Fretmen"),
+                        React.createElement(Th, null, "Ders G\u00FCn\u00FC"),
+                        React.createElement(Th, null, "Aidat"),
+                        React.createElement(Th, null, "Ders Hakk\u0131"),
+                        React.createElement(Th, null))),
+                React.createElement("tbody", null, filtered.map(s => {
+                    const credit = studentCredit(s.id);
+                    return (React.createElement("tr", { key: s.id },
+                        React.createElement(Td, null,
+                            React.createElement("button", { style: { textDecoration: "underline dotted", background: "none", border: "none", cursor: "pointer", color: C.ink, fontSize: 14, fontWeight: 500 }, onClick: () => setDetail(s.id) }, s.name),
+                            s.status === "ayrildi" && React.createElement("div", null,
+                                React.createElement(Pill, { tone: "danger" }, "Ayr\u0131ld\u0131"))),
+                        React.createElement(Td, null, s.instrument),
+                        React.createElement(Td, null, s.courseType === "bireysel" ? "Bireysel" : "Grup"),
+                        React.createElement(Td, null, teacherName(s.teacherId)),
+                        React.createElement(Td, null, GUNLER[s.weeklyDayIndex]),
+                        React.createElement(Td, { style: monoFont }, fmtTL(s.fee)),
+                        React.createElement(Td, null, credit < 0 ? React.createElement(Pill, { tone: "danger" },
+                            Math.abs(credit),
+                            " ders bor\u00E7lu") : React.createElement(Pill, { tone: "success" },
+                            credit,
+                            " ders hakk\u0131")),
+                        React.createElement(Td, { className: "text-right whitespace-nowrap" }, s.status === "aktif" && React.createElement("button", { style: btnStyle("danger"), onClick: () => markLeft(s.id) }, "Ayr\u0131ld\u0131"))));
+                }))))),
+        showForm && (React.createElement(Modal, { title: "Yeni \u00D6\u011Frenci Kayd\u0131", wide: true, onClose: () => setShowForm(false) },
+            React.createElement("div", { className: "grid md:grid-cols-2 gap-3" },
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "\u00D6\u011Frenci Ad\u0131 Soyad\u0131"),
+                    React.createElement("input", { style: inputStyle, type: "text", value: form.name, onChange: e => setForm(Object.assign(Object.assign({}, form), { name: e.target.value })) })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Veli Ad\u0131 Soyad\u0131"),
+                    React.createElement("input", { style: inputStyle, type: "text", value: form.parentName, onChange: e => setForm(Object.assign(Object.assign({}, form), { parentName: e.target.value })) })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Telefon"),
+                    React.createElement("input", { style: inputStyle, type: "tel", value: form.phone, onChange: e => setForm(Object.assign(Object.assign({}, form), { phone: e.target.value })) })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Kay\u0131t Tarihi"),
+                    React.createElement("input", { style: inputStyle, type: "date", value: form.registerDate, onChange: e => setForm(Object.assign(Object.assign({}, form), { registerDate: e.target.value })) })),
+                React.createElement("div", { className: "md:col-span-2" },
+                    React.createElement("label", { style: labelStyle }, "Adres"),
+                    React.createElement("textarea", { style: inputStyle, rows: "2", value: form.address, onChange: e => setForm(Object.assign(Object.assign({}, form), { address: e.target.value })) })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Enstr\u00FCman"),
+                    React.createElement("select", { style: inputStyle, value: form.instrument, onChange: e => setForm(Object.assign(Object.assign({}, form), { instrument: e.target.value })) }, ENSTRUMANLAR.map(i => React.createElement("option", { key: i, value: i }, i)))),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Ders T\u00FCr\u00FC"),
+                    React.createElement("select", { style: inputStyle, value: form.courseType, onChange: e => { const ct = e.target.value; setForm(Object.assign(Object.assign({}, form), { courseType: ct, fee: ct === "bireysel" ? UCRET_BIREYSEL : UCRET_GRUP })); } },
+                        React.createElement("option", { value: "bireysel" }, "Bireysel"),
+                        React.createElement("option", { value: "grup" }, "Grup"))),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "\u00D6\u011Fretmen"),
+                    React.createElement("select", { style: inputStyle, value: form.teacherId, onChange: e => setForm(Object.assign(Object.assign({}, form), { teacherId: e.target.value })) },
+                        React.createElement("option", { value: "" }, "Se\u00E7in\u2026"),
+                        teachers.filter(t => (t.instruments || []).includes(form.instrument)).map(t => React.createElement("option", { key: t.id, value: t.id }, t.name))),
+                    teachers.filter(t => (t.instruments || []).includes(form.instrument)).length === 0 && React.createElement("p", { className: "text-xs mt-1", style: { color: C.danger } }, "Bu enstr\u00FCman\u0131 verebilen \u00F6\u011Fretmen kay\u0131tl\u0131 de\u011Fil.")),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Haftal\u0131k Ders G\u00FCn\u00FC"),
+                    React.createElement("select", { style: inputStyle, value: form.weeklyDayIndex, onChange: e => setForm(Object.assign(Object.assign({}, form), { weeklyDayIndex: Number(e.target.value) })) }, GUNLER.map((g, i) => React.createElement("option", { key: g, value: i }, g)))),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Ayl\u0131k Aidat (\u20BA) \u2014 4 ders hakk\u0131"),
+                    React.createElement("input", { style: inputStyle, type: "number", value: form.fee, onChange: e => setForm(Object.assign(Object.assign({}, form), { fee: e.target.value })) }),
+                    React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } },
+                        "Standart: bireysel ",
+                        fmtTL(UCRET_BIREYSEL),
+                        ", grup ",
+                        fmtTL(UCRET_GRUP),
+                        "."))),
+            React.createElement("div", { className: "flex justify-end gap-2 pt-4" },
+                React.createElement("button", { style: btnStyle("ghost"), onClick: () => setShowForm(false) }, "Vazge\u00E7"),
+                React.createElement("button", { style: btnStyle("primary"), onClick: save }, "Kayd\u0131 Tamamla")))),
+        detail && React.createElement(StudentDetailModal, { student: students.find(s => s.id === detail), teacherName: teacherName, onClose: () => setDetail(null) })));
 }
-function StudentDetailModal({student, teacherName, onClose}){
-  if(!student) return null;
-  return (
-    <Modal title={student.name} onClose={onClose}>
-      <div className="text-sm space-y-2">
-        <Row label="Veli" value={student.parentName || "—"} />
-        <Row label="Telefon" value={student.phone || "—"} />
-        <Row label="Adres" value={student.address || "—"} />
-        <Row label="Enstrüman" value={student.instrument} />
-        <Row label="Ders Türü" value={student.courseType==="bireysel"?"Bireysel":"Grup"} />
-        <Row label="Öğretmen" value={teacherName(student.teacherId)} />
-        <Row label="Ders Günü" value={GUNLER[student.weeklyDayIndex]} />
-        <Row label="Aidat" value={fmtTL(student.fee)} />
-        <Row label="Kayıt Tarihi" value={fmtDateTR(student.registerDate)} />
-        <Row label="Durum" value={student.status==="aktif" ? "Aktif" : "Ayrıldı"} />
-      </div>
-    </Modal>
-  );
+function StudentDetailModal({ student, teacherName, onClose }) {
+    if (!student)
+        return null;
+    return (React.createElement(Modal, { title: student.name, onClose: onClose },
+        React.createElement("div", { className: "text-sm space-y-2" },
+            React.createElement(Row, { label: "Veli", value: student.parentName || "—" }),
+            React.createElement(Row, { label: "Telefon", value: student.phone || "—" }),
+            React.createElement(Row, { label: "Adres", value: student.address || "—" }),
+            React.createElement(Row, { label: "Enstr\u00FCman", value: student.instrument }),
+            React.createElement(Row, { label: "Ders T\u00FCr\u00FC", value: student.courseType === "bireysel" ? "Bireysel" : "Grup" }),
+            React.createElement(Row, { label: "\u00D6\u011Fretmen", value: teacherName(student.teacherId) }),
+            React.createElement(Row, { label: "Ders G\u00FCn\u00FC", value: GUNLER[student.weeklyDayIndex] }),
+            React.createElement(Row, { label: "Aidat", value: fmtTL(student.fee) }),
+            React.createElement(Row, { label: "Kay\u0131t Tarihi", value: fmtDateTR(student.registerDate) }),
+            React.createElement(Row, { label: "Durum", value: student.status === "aktif" ? "Aktif" : "Ayrıldı" }))));
 }
-function Row({label, value}){ return <div className="flex justify-between pb-1" style={{borderBottom:"1px solid "+C.line}}><span style={{color:C.inkSoft}}>{label}</span><span className="font-medium">{value}</span></div>; }
-
+function Row({ label, value }) { return React.createElement("div", { className: "flex justify-between pb-1", style: { borderBottom: "1px solid " + C.line } },
+    React.createElement("span", { style: { color: C.inkSoft } }, label),
+    React.createElement("span", { className: "font-medium" }, value)); }
 /* ---------------- Ders Takvimi & Yoklama ---------------- */
-
-function DersTakvimiTab({lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId}){
-  const [weekKey, setWeekKey] = useState(currentWeekKey());
-  const [telafiFor, setTelafiFor] = useState(null);
-  const [telafiDate, setTelafiDate] = useState("");
-  useEffect(() => { ensureWeekLessons(weekKey); /* eslint-disable-next-line */ }, [weekKey]);
-
-  let weekLessons = lessons.filter(l => l.weekKey===weekKey || (l.isTelafi && l.date && weekKeyOf(fromISODate(l.date))===weekKey));
-  if(onlyTeacherId) weekLessons = weekLessons.filter(l=>l.teacherId===onlyTeacherId);
-  weekLessons = weekLessons.slice().sort((a,b)=> a.date.localeCompare(b.date));
-
-  function setStatus(lessonId, status){
-    if(status==="mazeretli"){ setTelafiFor(lessonId); setTelafiDate(""); return; }
-    setLessons(lessons.map(l => l.id===lessonId ? {...l, status} : l));
-  }
-  function confirmMazeret(){
-    if(!telafiDate){ alert("Telafi ders günü seçin."); return; }
-    const orig = lessons.find(l=>l.id===telafiFor);
-    if(!orig) return;
-    const updated = lessons.map(l => l.id===telafiFor ? {...l, status:"mazeretli"} : l);
-    updated.push({id: uid("ders"), studentId:orig.studentId, teacherId:orig.teacherId, date:telafiDate, weekKey: weekKeyOf(fromISODate(telafiDate)), status:"bekliyor", isTelafi:true, linkedTo:orig.id, telafiForDate:orig.date});
-    setLessons(updated);
-    setTelafiFor(null);
-  }
-  const statusMeta = {
-    bekliyor:{label:"Bekliyor", tone:"neutral"}, yapildi:{label:"Yapıldı", tone:"success"},
-    mazeretli:{label:"Mazeretli (telafi planlandı)", tone:"accent"}, mazeretsiz:{label:"Mazeretsiz (ders hakkı yandı)", tone:"danger"},
-  };
-
-  return (
-    <div>
-      <SectionTitle eyebrow="Yoklama" title="Ders Takvimi" action={
-        <div className="flex items-center gap-2">
-          <button style={btnStyle("ghost")} onClick={()=>setWeekKey(shiftWeekKey(weekKey,-1))}>‹ Önceki</button>
-          <span className="text-sm font-medium" style={monoFont}>{weekRangeLabel(weekKey)}</span>
-          <button style={btnStyle("ghost")} onClick={()=>setWeekKey(shiftWeekKey(weekKey,1))}>Sonraki ›</button>
-        </div>} />
-      {weekLessons.length===0 ? <EmptyState text="Bu hafta için ders kaydı yok." /> : (
-        <div style={{...cardStyle, overflowX:"auto"}}>
-          <table className="w-full">
-            <thead><tr><Th>Tarih</Th><Th>Öğrenci</Th><Th>Öğretmen</Th><Th>Tür</Th><Th>Durum</Th><Th></Th></tr></thead>
-            <tbody>
-              {weekLessons.map(l => {
-                const st = studentById(l.studentId); const tc = teacherById(l.teacherId);
-                if(!st) return null;
-                return (
-                  <tr key={l.id}>
-                    <Td style={monoFont}>{fmtDateTR(l.date)}{l.isTelafi && <span className="ml-1"><Pill tone="accent">Telafi</Pill></span>}</Td>
-                    <Td>{st.name}</Td><Td>{tc ? tc.name : "—"}</Td><Td>{st.courseType==="bireysel" ? "Bireysel" : "Grup"}</Td>
-                    <Td><Pill tone={statusMeta[l.status].tone}>{statusMeta[l.status].label}</Pill></Td>
-                    <Td className="text-right whitespace-nowrap">
-                      {l.status==="bekliyor" ? (
-                        <div className="flex gap-1 justify-end">
-                          <button style={btnStyle("primary")} onClick={()=>setStatus(l.id,"yapildi")}>Yapıldı</button>
-                          <button style={btnStyle("accent")} onClick={()=>setStatus(l.id,"mazeretli")}>Mazeretli</button>
-                          <button style={btnStyle("danger")} onClick={()=>setStatus(l.id,"mazeretsiz")}>Mazeretsiz</button>
-                        </div>
-                      ) : (<button style={btnStyle("ghost")} onClick={()=>setLessons(lessons.map(x=>x.id===l.id?{...x,status:"bekliyor"}:x))}>Geri Al</button>)}
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {telafiFor && (
-        <Modal title="Telafi Dersi Planla" onClose={()=>setTelafiFor(null)}>
-          <p className="text-sm mb-3" style={{color:C.inkSoft}}>Öğrenci önceden haber verdiği için bu dersin hakkı yanmayacak. Telafi dersi için yeni bir tarih seçin.</p>
-          <label style={labelStyle}>Telafi Tarihi</label>
-          <input style={inputStyle} type="date" value={telafiDate} onChange={e=>setTelafiDate(e.target.value)} />
-          <div className="flex justify-end gap-2 pt-4">
-            <button style={btnStyle("ghost")} onClick={()=>setTelafiFor(null)}>Vazgeç</button>
-            <button style={btnStyle("primary")} onClick={confirmMazeret}>Kaydet</button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
+function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId }) {
+    const [weekKey, setWeekKey] = useState(currentWeekKey());
+    const [telafiFor, setTelafiFor] = useState(null);
+    const [telafiDate, setTelafiDate] = useState("");
+    useEffect(() => { ensureWeekLessons(weekKey); /* eslint-disable-next-line */ }, [weekKey]);
+    let weekLessons = lessons.filter(l => l.weekKey === weekKey || (l.isTelafi && l.date && weekKeyOf(fromISODate(l.date)) === weekKey));
+    if (onlyTeacherId)
+        weekLessons = weekLessons.filter(l => l.teacherId === onlyTeacherId);
+    weekLessons = weekLessons.slice().sort((a, b) => a.date.localeCompare(b.date));
+    function setStatus(lessonId, status) {
+        if (status === "mazeretli") {
+            setTelafiFor(lessonId);
+            setTelafiDate("");
+            return;
+        }
+        setLessons(lessons.map(l => l.id === lessonId ? Object.assign(Object.assign({}, l), { status }) : l));
+    }
+    function confirmMazeret() {
+        if (!telafiDate) {
+            alert("Telafi ders günü seçin.");
+            return;
+        }
+        const orig = lessons.find(l => l.id === telafiFor);
+        if (!orig)
+            return;
+        const updated = lessons.map(l => l.id === telafiFor ? Object.assign(Object.assign({}, l), { status: "mazeretli" }) : l);
+        updated.push({ id: uid("ders"), studentId: orig.studentId, teacherId: orig.teacherId, date: telafiDate, weekKey: weekKeyOf(fromISODate(telafiDate)), status: "bekliyor", isTelafi: true, linkedTo: orig.id, telafiForDate: orig.date });
+        setLessons(updated);
+        setTelafiFor(null);
+    }
+    const statusMeta = {
+        bekliyor: { label: "Bekliyor", tone: "neutral" }, yapildi: { label: "Yapıldı", tone: "success" },
+        mazeretli: { label: "Mazeretli (telafi planlandı)", tone: "accent" }, mazeretsiz: { label: "Mazeretsiz (ders hakkı yandı)", tone: "danger" },
+    };
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "Yoklama", title: "Ders Takvimi", action: React.createElement("div", { className: "flex items-center gap-2" },
+                React.createElement("button", { style: btnStyle("ghost"), onClick: () => setWeekKey(shiftWeekKey(weekKey, -1)) }, "\u2039 \u00D6nceki"),
+                React.createElement("span", { className: "text-sm font-medium", style: monoFont }, weekRangeLabel(weekKey)),
+                React.createElement("button", { style: btnStyle("ghost"), onClick: () => setWeekKey(shiftWeekKey(weekKey, 1)) }, "Sonraki \u203A")) }),
+        weekLessons.length === 0 ? React.createElement(EmptyState, { text: "Bu hafta i\u00E7in ders kayd\u0131 yok." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
+            React.createElement("table", { className: "w-full" },
+                React.createElement("thead", null,
+                    React.createElement("tr", null,
+                        React.createElement(Th, null, "Tarih"),
+                        React.createElement(Th, null, "\u00D6\u011Frenci"),
+                        React.createElement(Th, null, "\u00D6\u011Fretmen"),
+                        React.createElement(Th, null, "T\u00FCr"),
+                        React.createElement(Th, null, "Durum"),
+                        React.createElement(Th, null))),
+                React.createElement("tbody", null, weekLessons.map(l => {
+                    const st = studentById(l.studentId);
+                    const tc = teacherById(l.teacherId);
+                    if (!st)
+                        return null;
+                    return (React.createElement("tr", { key: l.id },
+                        React.createElement(Td, { style: monoFont },
+                            fmtDateTR(l.date),
+                            l.isTelafi && React.createElement("span", { className: "ml-1" },
+                                React.createElement(Pill, { tone: "accent" }, "Telafi"))),
+                        React.createElement(Td, null, st.name),
+                        React.createElement(Td, null, tc ? tc.name : "—"),
+                        React.createElement(Td, null, st.courseType === "bireysel" ? "Bireysel" : "Grup"),
+                        React.createElement(Td, null,
+                            React.createElement(Pill, { tone: statusMeta[l.status].tone }, statusMeta[l.status].label)),
+                        React.createElement(Td, { className: "text-right whitespace-nowrap" }, l.status === "bekliyor" ? (React.createElement("div", { className: "flex gap-1 justify-end" },
+                            React.createElement("button", { style: btnStyle("primary"), onClick: () => setStatus(l.id, "yapildi") }, "Yap\u0131ld\u0131"),
+                            React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(l.id, "mazeretli") }, "Mazeretli"),
+                            React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(l.id, "mazeretsiz") }, "Mazeretsiz"))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => setLessons(lessons.map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x)) }, "Geri Al")))));
+                }))))),
+        telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => setTelafiFor(null) },
+            React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "\u00D6\u011Frenci \u00F6nceden haber verdi\u011Fi i\u00E7in bu dersin hakk\u0131 yanmayacak. Telafi dersi i\u00E7in yeni bir tarih se\u00E7in."),
+            React.createElement("label", { style: labelStyle }, "Telafi Tarihi"),
+            React.createElement("input", { style: inputStyle, type: "date", value: telafiDate, onChange: e => setTelafiDate(e.target.value) }),
+            React.createElement("div", { className: "flex justify-end gap-2 pt-4" },
+                React.createElement("button", { style: btnStyle("ghost"), onClick: () => setTelafiFor(null) }, "Vazge\u00E7"),
+                React.createElement("button", { style: btnStyle("primary"), onClick: confirmMazeret }, "Kaydet"))))));
 }
-
 /* ---------------- Ödemeler ---------------- */
-
-function OdemelerTab({students, payments, setPayments, studentCredit}){
-  const [studentId, setStudentId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(toISODate(new Date()));
-  const aktif = students.filter(s=>s.status==="aktif");
-  useEffect(() => { const st = aktif.find(s=>s.id===studentId); if(st) setAmount(st.fee); /* eslint-disable-next-line */ }, [studentId]);
-  function addPayment(){
-    if(!studentId || !amount) return;
-    setPayments([...payments, {id: uid("ode"), studentId, amount:Number(amount), date, note:"Aidat ödemesi"}]);
-    setStudentId(""); setAmount(""); setDate(toISODate(new Date()));
-  }
-  const sorted = payments.slice().sort((a,b)=>b.date.localeCompare(a.date));
-  const studentName = (id) => (students.find(s=>s.id===id)||{}).name || "—";
-  return (
-    <div>
-      <SectionTitle eyebrow="Tahsilat" title="Ödemeler" />
-      <div style={{...cardStyle, padding:16, marginBottom:20}}>
-        <h3 className="text-lg mb-3" style={displayFont}>Yeni Ödeme Girişi</h3>
-        <div className="grid md:grid-cols-4 gap-3 items-end">
-          <div><label style={labelStyle}>Öğrenci</label>
-            <select style={inputStyle} value={studentId} onChange={e=>setStudentId(e.target.value)}>
-              <option value="">Seçin…</option>{aktif.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div><label style={labelStyle}>Tutar (₺)</label><input style={inputStyle} type="number" value={amount} onChange={e=>setAmount(e.target.value)} /></div>
-          <div><label style={labelStyle}>Tarih</label><input style={inputStyle} type="date" value={date} onChange={e=>setDate(e.target.value)} /></div>
-          <button style={btnStyle("primary")} onClick={addPayment}>Ödemeyi Kaydet (+4 ders hakkı)</button>
-        </div>
-        {studentId && <p className="text-xs mt-2" style={{color:C.inkSoft}}>Mevcut ders hakkı: {studentCredit(studentId)}</p>}
-      </div>
-      <h3 className="text-lg mb-2" style={displayFont}>Ödeme Geçmişi</h3>
-      {sorted.length===0 ? <EmptyState text="Henüz ödeme kaydı yok." /> : (
-        <div style={{...cardStyle, overflowX:"auto"}}>
-          <table className="w-full">
-            <thead><tr><Th>Tarih</Th><Th>Öğrenci</Th><Th>Tutar</Th><Th>Not</Th></tr></thead>
-            <tbody>{sorted.map(p => (<tr key={p.id}><Td style={monoFont}>{fmtDateTR(p.date)}</Td><Td>{studentName(p.studentId)}</Td><Td style={monoFont}>{fmtTL(p.amount)}</Td><Td style={{color:C.inkSoft}}>{p.note}</Td></tr>))}</tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
+function OdemelerTab({ students, payments, setPayments, studentCredit }) {
+    const [studentId, setStudentId] = useState("");
+    const [amount, setAmount] = useState("");
+    const [date, setDate] = useState(toISODate(new Date()));
+    const aktif = students.filter(s => s.status === "aktif");
+    useEffect(() => { const st = aktif.find(s => s.id === studentId); if (st)
+        setAmount(st.fee); /* eslint-disable-next-line */ }, [studentId]);
+    function addPayment() {
+        if (!studentId || !amount)
+            return;
+        setPayments([...payments, { id: uid("ode"), studentId, amount: Number(amount), date, note: "Aidat ödemesi" }]);
+        setStudentId("");
+        setAmount("");
+        setDate(toISODate(new Date()));
+    }
+    const sorted = payments.slice().sort((a, b) => b.date.localeCompare(a.date));
+    const studentName = (id) => (students.find(s => s.id === id) || {}).name || "—";
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "Tahsilat", title: "\u00D6demeler" }),
+        React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20 }) },
+            React.createElement("h3", { className: "text-lg mb-3", style: displayFont }, "Yeni \u00D6deme Giri\u015Fi"),
+            React.createElement("div", { className: "grid md:grid-cols-4 gap-3 items-end" },
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "\u00D6\u011Frenci"),
+                    React.createElement("select", { style: inputStyle, value: studentId, onChange: e => setStudentId(e.target.value) },
+                        React.createElement("option", { value: "" }, "Se\u00E7in\u2026"),
+                        aktif.map(s => React.createElement("option", { key: s.id, value: s.id }, s.name)))),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Tutar (\u20BA)"),
+                    React.createElement("input", { style: inputStyle, type: "number", value: amount, onChange: e => setAmount(e.target.value) })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Tarih"),
+                    React.createElement("input", { style: inputStyle, type: "date", value: date, onChange: e => setDate(e.target.value) })),
+                React.createElement("button", { style: btnStyle("primary"), onClick: addPayment }, "\u00D6demeyi Kaydet (+4 ders hakk\u0131)")),
+            studentId && React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } },
+                "Mevcut ders hakk\u0131: ",
+                studentCredit(studentId))),
+        React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "\u00D6deme Ge\u00E7mi\u015Fi"),
+        sorted.length === 0 ? React.createElement(EmptyState, { text: "Hen\u00FCz \u00F6deme kayd\u0131 yok." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
+            React.createElement("table", { className: "w-full" },
+                React.createElement("thead", null,
+                    React.createElement("tr", null,
+                        React.createElement(Th, null, "Tarih"),
+                        React.createElement(Th, null, "\u00D6\u011Frenci"),
+                        React.createElement(Th, null, "Tutar"),
+                        React.createElement(Th, null, "Not"))),
+                React.createElement("tbody", null, sorted.map(p => (React.createElement("tr", { key: p.id },
+                    React.createElement(Td, { style: monoFont }, fmtDateTR(p.date)),
+                    React.createElement(Td, null, studentName(p.studentId)),
+                    React.createElement(Td, { style: monoFont }, fmtTL(p.amount)),
+                    React.createElement(Td, { style: { color: C.inkSoft } }, p.note))))))))));
 }
-
 /* ---------------- Haftalık Hakedişler ---------------- */
-
-function computeTeacherWeek(lessons, students, teacherId, weekKey){
-  const weekLessons = lessons.filter(l => l.teacherId===teacherId && (l.weekKey===weekKey || (l.isTelafi && weekKeyOf(fromISODate(l.date))===weekKey)));
-  let total = 0;
-  const rows = weekLessons.map(l => {
-    const st = students.find(s=>s.id===l.studentId);
-    let pay = 0;
-    if(l.status==="yapildi") pay = st && st.courseType==="grup" ? OGRETMEN_GRUP_OGRENCI : OGRETMEN_BIREYSEL_SAAT;
-    total += pay;
-    return {lesson:l, student:st, pay};
-  }).sort((a,b)=>a.lesson.date.localeCompare(b.lesson.date));
-  return {rows, total};
+function computeTeacherWeek(lessons, students, teacherId, weekKey) {
+    const weekLessons = lessons.filter(l => l.teacherId === teacherId && (l.weekKey === weekKey || (l.isTelafi && weekKeyOf(fromISODate(l.date)) === weekKey)));
+    let total = 0;
+    const rows = weekLessons.map(l => {
+        const st = students.find(s => s.id === l.studentId);
+        let pay = 0;
+        if (l.status === "yapildi")
+            pay = st && st.courseType === "grup" ? OGRETMEN_GRUP_OGRENCI : OGRETMEN_BIREYSEL_SAAT;
+        total += pay;
+        return { lesson: l, student: st, pay };
+    }).sort((a, b) => a.lesson.date.localeCompare(b.lesson.date));
+    return { rows, total };
 }
-
-function HakedisTab({lessons, students, teachers, payouts, setPayouts, onlyTeacherId}){
-  const [weekKey, setWeekKey] = useState(currentWeekKey());
-  const list = onlyTeacherId ? teachers.filter(t=>t.id===onlyTeacherId) : teachers;
-  function markPaid(teacherId, total){
-    const existing = payouts.find(p=>p.teacherId===teacherId && p.weekKey===weekKey);
-    if(existing) setPayouts(payouts.map(p => p===existing ? {...p, paid:true, amount:total, paidDate: toISODate(new Date())} : p));
-    else setPayouts([...payouts, {id: uid("pay"), teacherId, weekKey, amount: total, paid:true, paidDate: toISODate(new Date())}]);
-  }
-  function unmarkPaid(teacherId){ setPayouts(payouts.map(p => (p.teacherId===teacherId && p.weekKey===weekKey) ? {...p, paid:false} : p)); }
-  return (
-    <div>
-      <SectionTitle eyebrow="Pazar Ödemesi" title="Öğretmen Hakedişleri" action={
-        <div className="flex items-center gap-2">
-          <button style={btnStyle("ghost")} onClick={()=>setWeekKey(shiftWeekKey(weekKey,-1))}>‹ Önceki</button>
-          <span className="text-sm font-medium" style={monoFont}>{weekRangeLabel(weekKey)}</span>
-          <button style={btnStyle("ghost")} onClick={()=>setWeekKey(shiftWeekKey(weekKey,1))}>Sonraki ›</button>
-        </div>} />
-      {list.length===0 ? <EmptyState text="Kayıtlı öğretmen yok." /> : (
-        <div className="space-y-4">
-          {list.map(t => {
-            const {rows, total} = computeTeacherWeek(lessons, students, t.id, weekKey);
-            const payoutRec = payouts.find(p=>p.teacherId===t.id && p.weekKey===weekKey);
+function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeacherId }) {
+    const [weekKey, setWeekKey] = useState(currentWeekKey());
+    const list = onlyTeacherId ? teachers.filter(t => t.id === onlyTeacherId) : teachers;
+    function markPaid(teacherId, total) {
+        const existing = payouts.find(p => p.teacherId === teacherId && p.weekKey === weekKey);
+        if (existing)
+            setPayouts(payouts.map(p => p === existing ? Object.assign(Object.assign({}, p), { paid: true, amount: total, paidDate: toISODate(new Date()) }) : p));
+        else
+            setPayouts([...payouts, { id: uid("pay"), teacherId, weekKey, amount: total, paid: true, paidDate: toISODate(new Date()) }]);
+    }
+    function unmarkPaid(teacherId) { setPayouts(payouts.map(p => (p.teacherId === teacherId && p.weekKey === weekKey) ? Object.assign(Object.assign({}, p), { paid: false }) : p)); }
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "Pazar \u00D6demesi", title: "\u00D6\u011Fretmen Hakedi\u015Fleri", action: React.createElement("div", { className: "flex items-center gap-2" },
+                React.createElement("button", { style: btnStyle("ghost"), onClick: () => setWeekKey(shiftWeekKey(weekKey, -1)) }, "\u2039 \u00D6nceki"),
+                React.createElement("span", { className: "text-sm font-medium", style: monoFont }, weekRangeLabel(weekKey)),
+                React.createElement("button", { style: btnStyle("ghost"), onClick: () => setWeekKey(shiftWeekKey(weekKey, 1)) }, "Sonraki \u203A")) }),
+        list.length === 0 ? React.createElement(EmptyState, { text: "Kay\u0131tl\u0131 \u00F6\u011Fretmen yok." }) : (React.createElement("div", { className: "space-y-4" }, list.map(t => {
+            const { rows, total } = computeTeacherWeek(lessons, students, t.id, weekKey);
+            const payoutRec = payouts.find(p => p.teacherId === t.id && p.weekKey === weekKey);
             const isPaid = payoutRec && payoutRec.paid;
-            return (
-              <div style={{...cardStyle, padding:16}} key={t.id}>
-                <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                  <div><h3 className="text-lg" style={displayFont}>{t.name}</h3><p className="text-xs" style={{color:C.inkSoft}}>{(t.instruments||[]).join(", ")}</p></div>
-                  <div className="text-right">
-                    <div className="text-xl" style={{...monoFont, color:C.primary}}>{fmtTL(total)}</div>
-                    {isPaid ? (
-                      <div className="flex items-center gap-2 justify-end mt-1"><Pill tone="success">Ödendi — {fmtDateTR(payoutRec.paidDate)}</Pill><button style={btnStyle("ghost")} onClick={()=>unmarkPaid(t.id)}>Geri al</button></div>
-                    ) : (<button style={{...btnStyle("accent"), marginTop:4, opacity: rows.length===0?0.5:1}} onClick={()=>markPaid(t.id,total)} disabled={rows.length===0}>Ödendi olarak işaretle</button>)}
-                  </div>
-                </div>
-                {rows.length===0 ? <p className="text-sm" style={{color:C.inkSoft}}>Bu hafta ders kaydı yok.</p> : (
-                  <table className="w-full">
-                    <thead><tr><Th>Tarih</Th><Th>Öğrenci</Th><Th>Tür</Th><Th>Durum</Th><Th>Tutar</Th></tr></thead>
-                    <tbody>
-                      {rows.map(r => (
-                        <tr key={r.lesson.id}>
-                          <Td style={monoFont}>{fmtDateTR(r.lesson.date)}</Td><Td>{r.student ? r.student.name : "—"}</Td>
-                          <Td>{r.student && r.student.courseType==="grup" ? "Grup" : "Bireysel"}</Td>
-                          <Td>
-                            {r.lesson.status==="yapildi" && <Pill tone="success">Yapıldı</Pill>}
-                            {r.lesson.status==="mazeretli" && <Pill tone="accent">Mazeretli (ücretsiz)</Pill>}
-                            {r.lesson.status==="mazeretsiz" && <Pill tone="danger">Mazeretsiz (ücretsiz)</Pill>}
-                            {r.lesson.status==="bekliyor" && <Pill>Bekliyor</Pill>}
-                          </Td>
-                          <Td style={monoFont}>{r.pay>0 ? fmtTL(r.pay) : "—"}</Td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+            return (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }), key: t.id },
+                React.createElement("div", { className: "flex items-center justify-between flex-wrap gap-2 mb-2" },
+                    React.createElement("div", null,
+                        React.createElement("h3", { className: "text-lg", style: displayFont }, t.name),
+                        React.createElement("p", { className: "text-xs", style: { color: C.inkSoft } }, (t.instruments || []).join(", "))),
+                    React.createElement("div", { className: "text-right" },
+                        React.createElement("div", { className: "text-xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(total)),
+                        isPaid ? (React.createElement("div", { className: "flex items-center gap-2 justify-end mt-1" },
+                            React.createElement(Pill, { tone: "success" },
+                                "\u00D6dendi \u2014 ",
+                                fmtDateTR(payoutRec.paidDate)),
+                            React.createElement("button", { style: btnStyle("ghost"), onClick: () => unmarkPaid(t.id) }, "Geri al"))) : (React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("accent")), { marginTop: 4, opacity: rows.length === 0 ? 0.5 : 1 }), onClick: () => markPaid(t.id, total), disabled: rows.length === 0 }, "\u00D6dendi olarak i\u015Faretle")))),
+                rows.length === 0 ? React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, "Bu hafta ders kayd\u0131 yok.") : (React.createElement("table", { className: "w-full" },
+                    React.createElement("thead", null,
+                        React.createElement("tr", null,
+                            React.createElement(Th, null, "Tarih"),
+                            React.createElement(Th, null, "\u00D6\u011Frenci"),
+                            React.createElement(Th, null, "T\u00FCr"),
+                            React.createElement(Th, null, "Durum"),
+                            React.createElement(Th, null, "Tutar"))),
+                    React.createElement("tbody", null, rows.map(r => (React.createElement("tr", { key: r.lesson.id },
+                        React.createElement(Td, { style: monoFont }, fmtDateTR(r.lesson.date)),
+                        React.createElement(Td, null, r.student ? r.student.name : "—"),
+                        React.createElement(Td, null, r.student && r.student.courseType === "grup" ? "Grup" : "Bireysel"),
+                        React.createElement(Td, null,
+                            r.lesson.status === "yapildi" && React.createElement(Pill, { tone: "success" }, "Yap\u0131ld\u0131"),
+                            r.lesson.status === "mazeretli" && React.createElement(Pill, { tone: "accent" }, "Mazeretli (\u00FCcretsiz)"),
+                            r.lesson.status === "mazeretsiz" && React.createElement(Pill, { tone: "danger" }, "Mazeretsiz (\u00FCcretsiz)"),
+                            r.lesson.status === "bekliyor" && React.createElement(Pill, null, "Bekliyor")),
+                        React.createElement(Td, { style: monoFont }, r.pay > 0 ? fmtTL(r.pay) : "—")))))))));
+        })))));
 }
-
 /* ---------------- Giderler ---------------- */
-
-function GiderlerTab({expenses, setExpenses}){
-  const [desc, setDesc] = useState("");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(toISODate(new Date()));
-  function add(){ if(!desc.trim() || !amount) return; setExpenses([...expenses, {id: uid("gid"), description:desc, amount:Number(amount), date}]); setDesc(""); setAmount(""); }
-  function remove(id){ setExpenses(expenses.filter(e=>e.id!==id)); }
-  const sorted = expenses.slice().sort((a,b)=>b.date.localeCompare(a.date));
-  return (
-    <div>
-      <SectionTitle eyebrow="Kurucu Girişi" title="Giderler" />
-      <div style={{...cardStyle, padding:16, marginBottom:20}}>
-        <h3 className="text-lg mb-3" style={displayFont}>Yeni Gider</h3>
-        <div className="grid md:grid-cols-4 gap-3 items-end">
-          <div className="md:col-span-2"><label style={labelStyle}>Açıklama</label><input style={inputStyle} type="text" value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Kira, fatura, malzeme…" /></div>
-          <div><label style={labelStyle}>Tutar (₺)</label><input style={inputStyle} type="number" value={amount} onChange={e=>setAmount(e.target.value)} /></div>
-          <div><label style={labelStyle}>Tarih</label><input style={inputStyle} type="date" value={date} onChange={e=>setDate(e.target.value)} /></div>
-        </div>
-        <div className="flex justify-end mt-3"><button style={btnStyle("primary")} onClick={add}>Gideri Kaydet</button></div>
-      </div>
-      {sorted.length===0 ? <EmptyState text="Henüz gider kaydı yok." /> : (
-        <div style={{...cardStyle, overflowX:"auto"}}>
-          <table className="w-full">
-            <thead><tr><Th>Tarih</Th><Th>Açıklama</Th><Th>Tutar</Th><Th></Th></tr></thead>
-            <tbody>{sorted.map(e => (<tr key={e.id}><Td style={monoFont}>{fmtDateTR(e.date)}</Td><Td>{e.description}</Td><Td style={monoFont}>{fmtTL(e.amount)}</Td><Td className="text-right"><button style={btnStyle("danger")} onClick={()=>remove(e.id)}>Sil</button></Td></tr>))}</tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
+function GiderlerTab({ expenses, setExpenses }) {
+    const [desc, setDesc] = useState("");
+    const [amount, setAmount] = useState("");
+    const [date, setDate] = useState(toISODate(new Date()));
+    function add() { if (!desc.trim() || !amount)
+        return; setExpenses([...expenses, { id: uid("gid"), description: desc, amount: Number(amount), date }]); setDesc(""); setAmount(""); }
+    function remove(id) { setExpenses(expenses.filter(e => e.id !== id)); }
+    const sorted = expenses.slice().sort((a, b) => b.date.localeCompare(a.date));
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "Kurucu Giri\u015Fi", title: "Giderler" }),
+        React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20 }) },
+            React.createElement("h3", { className: "text-lg mb-3", style: displayFont }, "Yeni Gider"),
+            React.createElement("div", { className: "grid md:grid-cols-4 gap-3 items-end" },
+                React.createElement("div", { className: "md:col-span-2" },
+                    React.createElement("label", { style: labelStyle }, "A\u00E7\u0131klama"),
+                    React.createElement("input", { style: inputStyle, type: "text", value: desc, onChange: e => setDesc(e.target.value), placeholder: "Kira, fatura, malzeme\u2026" })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Tutar (\u20BA)"),
+                    React.createElement("input", { style: inputStyle, type: "number", value: amount, onChange: e => setAmount(e.target.value) })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Tarih"),
+                    React.createElement("input", { style: inputStyle, type: "date", value: date, onChange: e => setDate(e.target.value) }))),
+            React.createElement("div", { className: "flex justify-end mt-3" },
+                React.createElement("button", { style: btnStyle("primary"), onClick: add }, "Gideri Kaydet"))),
+        sorted.length === 0 ? React.createElement(EmptyState, { text: "Hen\u00FCz gider kayd\u0131 yok." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
+            React.createElement("table", { className: "w-full" },
+                React.createElement("thead", null,
+                    React.createElement("tr", null,
+                        React.createElement(Th, null, "Tarih"),
+                        React.createElement(Th, null, "A\u00E7\u0131klama"),
+                        React.createElement(Th, null, "Tutar"),
+                        React.createElement(Th, null))),
+                React.createElement("tbody", null, sorted.map(e => (React.createElement("tr", { key: e.id },
+                    React.createElement(Td, { style: monoFont }, fmtDateTR(e.date)),
+                    React.createElement(Td, null, e.description),
+                    React.createElement(Td, { style: monoFont }, fmtTL(e.amount)),
+                    React.createElement(Td, { className: "text-right" },
+                        React.createElement("button", { style: btnStyle("danger"), onClick: () => remove(e.id) }, "Sil")))))))))));
 }
-
 /* ---------------- Kâr / Zarar Raporu ---------------- */
-
-function RaporTab({payments, payouts, expenses}){
-  const months = useMemo(() => {
-    const set = new Set();
-    payments.forEach(p=>set.add(monthKeyOf(p.date)));
-    expenses.forEach(e=>set.add(monthKeyOf(e.date)));
-    payouts.forEach(p=>{ if(p.paid && p.paidDate) set.add(monthKeyOf(p.paidDate)); });
-    set.add(monthKeyOf(toISODate(new Date())));
-    return Array.from(set).sort().reverse();
-  }, [payments, expenses, payouts]);
-  const [month, setMonth] = useState(months[0]);
-  useEffect(() => { if(!months.includes(month)) setMonth(months[0]); }, [months]);
-  const gelir = payments.filter(p=>monthKeyOf(p.date)===month).reduce((a,p)=>a+p.amount,0);
-  const ogretmenOdeme = payouts.filter(p=>p.paid && p.paidDate && monthKeyOf(p.paidDate)===month).reduce((a,p)=>a+p.amount,0);
-  const digerGider = expenses.filter(e=>monthKeyOf(e.date)===month).reduce((a,e)=>a+e.amount,0);
-  const kar = gelir - (ogretmenOdeme + digerGider);
-  return (
-    <div>
-      <SectionTitle eyebrow="Aylık Özet" title="Kâr / Zarar" action={
-        <select style={{...inputStyle, width:"auto"}} value={month} onChange={e=>setMonth(e.target.value)}>{months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>} />
-      <div className="grid md:grid-cols-4 gap-3 mb-5">
-        <StatCard label="Öğrenci Gelirleri" value={fmtTL(gelir)} />
-        <StatCard label="Öğretmen Ödemeleri" value={fmtTL(ogretmenOdeme)} />
-        <StatCard label="Diğer Giderler" value={fmtTL(digerGider)} />
-        <StatCard label={kar>=0 ? "Net Kâr" : "Net Zarar"} value={fmtTL(Math.abs(kar))} tone={kar>=0?"success":"danger"} />
-      </div>
-      <div style={{...cardStyle, padding:16}}>
-        <h3 className="text-lg mb-3" style={displayFont}>{monthLabel(month)} Özeti</h3>
-        <table className="w-full"><tbody>
-          <tr><Td>Öğrenci aidat gelirleri</Td><Td className="text-right" style={monoFont}>{fmtTL(gelir)}</Td></tr>
-          <tr><Td>Öğretmen hakediş ödemeleri</Td><Td className="text-right" style={{...monoFont, color:C.danger}}>− {fmtTL(ogretmenOdeme)}</Td></tr>
-          <tr><Td>Diğer giderler</Td><Td className="text-right" style={{...monoFont, color:C.danger}}>− {fmtTL(digerGider)}</Td></tr>
-          <tr><Td className="font-semibold">Net {kar>=0?"kâr":"zarar"}</Td><Td className="text-right font-semibold" style={{...monoFont, color: kar>=0?C.success:C.danger}}>{fmtTL(kar)}</Td></tr>
-        </tbody></table>
-      </div>
-    </div>
-  );
+function RaporTab({ payments, payouts, expenses }) {
+    const months = useMemo(() => {
+        const set = new Set();
+        payments.forEach(p => set.add(monthKeyOf(p.date)));
+        expenses.forEach(e => set.add(monthKeyOf(e.date)));
+        payouts.forEach(p => { if (p.paid && p.paidDate)
+            set.add(monthKeyOf(p.paidDate)); });
+        set.add(monthKeyOf(toISODate(new Date())));
+        return Array.from(set).sort().reverse();
+    }, [payments, expenses, payouts]);
+    const [month, setMonth] = useState(months[0]);
+    useEffect(() => { if (!months.includes(month))
+        setMonth(months[0]); }, [months]);
+    const gelir = payments.filter(p => monthKeyOf(p.date) === month).reduce((a, p) => a + p.amount, 0);
+    const ogretmenOdeme = payouts.filter(p => p.paid && p.paidDate && monthKeyOf(p.paidDate) === month).reduce((a, p) => a + p.amount, 0);
+    const digerGider = expenses.filter(e => monthKeyOf(e.date) === month).reduce((a, e) => a + e.amount, 0);
+    const kar = gelir - (ogretmenOdeme + digerGider);
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "Ayl\u0131k \u00D6zet", title: "K\u00E2r / Zarar", action: React.createElement("select", { style: Object.assign(Object.assign({}, inputStyle), { width: "auto" }), value: month, onChange: e => setMonth(e.target.value) }, months.map(m => React.createElement("option", { key: m, value: m }, monthLabel(m)))) }),
+        React.createElement("div", { className: "grid md:grid-cols-4 gap-3 mb-5" },
+            React.createElement(StatCard, { label: "\u00D6\u011Frenci Gelirleri", value: fmtTL(gelir) }),
+            React.createElement(StatCard, { label: "\u00D6\u011Fretmen \u00D6demeleri", value: fmtTL(ogretmenOdeme) }),
+            React.createElement(StatCard, { label: "Di\u011Fer Giderler", value: fmtTL(digerGider) }),
+            React.createElement(StatCard, { label: kar >= 0 ? "Net Kâr" : "Net Zarar", value: fmtTL(Math.abs(kar)), tone: kar >= 0 ? "success" : "danger" })),
+        React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
+            React.createElement("h3", { className: "text-lg mb-3", style: displayFont },
+                monthLabel(month),
+                " \u00D6zeti"),
+            React.createElement("table", { className: "w-full" },
+                React.createElement("tbody", null,
+                    React.createElement("tr", null,
+                        React.createElement(Td, null, "\u00D6\u011Frenci aidat gelirleri"),
+                        React.createElement(Td, { className: "text-right", style: monoFont }, fmtTL(gelir))),
+                    React.createElement("tr", null,
+                        React.createElement(Td, null, "\u00D6\u011Fretmen hakedi\u015F \u00F6demeleri"),
+                        React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.danger }) },
+                            "\u2212 ",
+                            fmtTL(ogretmenOdeme))),
+                    React.createElement("tr", null,
+                        React.createElement(Td, null, "Di\u011Fer giderler"),
+                        React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.danger }) },
+                            "\u2212 ",
+                            fmtTL(digerGider))),
+                    React.createElement("tr", null,
+                        React.createElement(Td, { className: "font-semibold" },
+                            "Net ",
+                            kar >= 0 ? "kâr" : "zarar"),
+                        React.createElement(Td, { className: "text-right font-semibold", style: Object.assign(Object.assign({}, monoFont), { color: kar >= 0 ? C.success : C.danger }) }, fmtTL(kar))))))));
 }
-
 /* ---------------- Render ---------------- */
-
-ReactDOM.createRoot(document.getElementById("root")).render(<ConnectionGate><App/></ConnectionGate>);
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ConnectionGate, null,
+    React.createElement(App, null)));
 
 </script>
 </body>
