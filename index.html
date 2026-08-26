@@ -71,6 +71,11 @@
     messagingSenderId: "442613655698",
     appId: "1:442613655698:web:3e8f15f99697c5b0399e4b"
   };
+
+  // Kurucu / Müdür girişi için ortak şifre. Bunu istediğiniz zaman
+  // değiştirebilirsiniz — tırnak içindeki metni değiştirip dosyayı
+  // kaydedin, GitHub'a yeniden yükleyin.
+  const ADMIN_PASSCODE = "Mimaroba2026";
 </script>
 <!-- ==================================================================== -->
 
@@ -254,6 +259,76 @@ function ConnectionGate({ children }) {
     }
     return children;
 }
+/* ---------------- Giriş Ekranı ---------------- */
+function LoginScreen({ staff, onLoginAdmin, onLoginTeacher }) {
+    const [mode, setMode] = useState(null);
+    const [passcode, setPasscode] = useState("");
+    const [chosenAdminRole, setChosenAdminRole] = useState("kurucu");
+    const [teacherId, setTeacherId] = useState("");
+    const [pin, setPin] = useState("");
+    const [error, setError] = useState("");
+    const teachers = staff.filter(s => s.role === "ogretmen");
+    function submitAdmin(e) {
+        e.preventDefault();
+        if (passcode === ADMIN_PASSCODE) {
+            setError("");
+            onLoginAdmin(chosenAdminRole);
+        }
+        else
+            setError("Şifre yanlış.");
+    }
+    function submitTeacher(e) {
+        e.preventDefault();
+        const t = teachers.find(x => x.id === teacherId);
+        if (!t) {
+            setError("Lütfen adınızı seçin.");
+            return;
+        }
+        if (!t.pin) {
+            setError("Bu öğretmen için henüz PIN tanımlanmamış. Kurucu/müdürden isteyin.");
+            return;
+        }
+        if (pin !== t.pin) {
+            setError("PIN yanlış.");
+            return;
+        }
+        setError("");
+        onLoginTeacher(t.id);
+    }
+    return (React.createElement("div", { className: "min-h-screen flex items-center justify-center p-4", style: { background: C.bg } },
+        React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 24, maxWidth: 420, width: "100%" }) },
+            React.createElement("div", { className: "text-2xl mb-1", style: displayFont }, "Mimaroba M\u00FCzik Kursu"),
+            React.createElement("p", { className: "text-sm mb-4", style: { color: C.inkSoft } }, "Devam etmek i\u00E7in giri\u015F t\u00FCr\u00FCn\u00FC se\u00E7in."),
+            !mode && (React.createElement("div", { className: "space-y-2" },
+                React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("primary")), { width: "100%" }), onClick: () => setMode("admin") }, "Kurucu / M\u00FCd\u00FCr Giri\u015Fi"),
+                React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("ghost")), { width: "100%" }), onClick: () => setMode("teacher") }, "\u00D6\u011Fretmen Giri\u015Fi"))),
+            mode === "admin" && (React.createElement("form", { onSubmit: submitAdmin, className: "space-y-3" },
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Giri\u015F T\u00FCr\u00FC"),
+                    React.createElement("select", { style: inputStyle, value: chosenAdminRole, onChange: e => setChosenAdminRole(e.target.value) },
+                        React.createElement("option", { value: "kurucu" }, "Kurucu"),
+                        React.createElement("option", { value: "mudur" }, "M\u00FCd\u00FCr"))),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "\u015Eifre"),
+                    React.createElement("input", { style: inputStyle, type: "password", value: passcode, onChange: e => setPasscode(e.target.value), autoFocus: true })),
+                error && React.createElement("p", { className: "text-xs", style: { color: C.danger } }, error),
+                React.createElement("div", { className: "flex gap-2" },
+                    React.createElement("button", { type: "button", style: btnStyle("ghost"), onClick: () => { setMode(null); setError(""); setPasscode(""); } }, "Geri"),
+                    React.createElement("button", { type: "submit", style: Object.assign(Object.assign({}, btnStyle("primary")), { flex: 1 }) }, "Giri\u015F Yap")))),
+            mode === "teacher" && (React.createElement("form", { onSubmit: submitTeacher, className: "space-y-3" },
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Ad\u0131n\u0131z"),
+                    React.createElement("select", { style: inputStyle, value: teacherId, onChange: e => setTeacherId(e.target.value) },
+                        React.createElement("option", { value: "" }, "Se\u00E7in\u2026"),
+                        teachers.map(t => React.createElement("option", { key: t.id, value: t.id }, t.name)))),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "PIN"),
+                    React.createElement("input", { style: inputStyle, type: "password", inputMode: "numeric", value: pin, onChange: e => setPin(e.target.value), autoFocus: true })),
+                error && React.createElement("p", { className: "text-xs", style: { color: C.danger } }, error),
+                React.createElement("div", { className: "flex gap-2" },
+                    React.createElement("button", { type: "button", style: btnStyle("ghost"), onClick: () => { setMode(null); setError(""); setPin(""); } }, "Geri"),
+                    React.createElement("button", { type: "submit", style: Object.assign(Object.assign({}, btnStyle("primary")), { flex: 1 }) }, "Giri\u015F Yap")))))));
+}
 /* ---------------- Ana Uygulama ---------------- */
 function App() {
     const [staff, setStaff, staffLoaded] = useFirestoreList("staff-list");
@@ -263,14 +338,65 @@ function App() {
     const [expenses, setExpenses, expensesLoaded] = useFirestoreList("expenses-list");
     const [payouts, setPayouts, payoutsLoaded] = useFirestoreList("payouts-list");
     const allLoaded = staffLoaded && studentsLoaded && lessonsLoaded && paymentsLoaded && expensesLoaded && payoutsLoaded;
-    const [role, setRole] = useState("kurucu");
-    const [activeTeacherId, setActiveTeacherId] = useState(null);
+    const AUTH_KEY = "mimaroba-auth-v1";
+    const [auth, setAuth] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem(AUTH_KEY) || "null");
+        }
+        catch (e) {
+            return null;
+        }
+    });
+    const role = auth ? auth.role : null;
+    const activeTeacherId = auth ? auth.teacherId : null;
     const [tab, setTab] = useState("panel");
+    function loginAdmin(chosenRole) {
+        const next = { mode: "admin", role: chosenRole, teacherId: null };
+        setAuth(next);
+        try {
+            localStorage.setItem(AUTH_KEY, JSON.stringify(next));
+        }
+        catch (e) { }
+        setTab(chosenRole === "kurucu" ? "panel" : "ogrenciler");
+    }
+    function loginTeacher(teacherId) {
+        const next = { mode: "teacher", role: "ogretmen", teacherId };
+        setAuth(next);
+        try {
+            localStorage.setItem(AUTH_KEY, JSON.stringify(next));
+        }
+        catch (e) { }
+        setTab("ogretmen-dersler");
+    }
+    function switchAdminRole(chosenRole) {
+        const next = { mode: "admin", role: chosenRole, teacherId: null };
+        setAuth(next);
+        try {
+            localStorage.setItem(AUTH_KEY, JSON.stringify(next));
+        }
+        catch (e) { }
+    }
+    function logout() {
+        setAuth(null);
+        try {
+            localStorage.removeItem(AUTH_KEY);
+        }
+        catch (e) { }
+    }
     const teachers = useMemo(() => staff.filter(s => s.role === "ogretmen"), [staff]);
     useEffect(() => {
-        if (role === "ogretmen" && !activeTeacherId && teachers.length > 0)
-            setActiveTeacherId(teachers[0].id);
-    }, [role, teachers, activeTeacherId]);
+        if (!auth)
+            return;
+        const validTabs = auth.role === "kurucu" ? ["panel", "personel", "ogrenciler", "dersler", "odemeler", "hakedis", "giderler", "rapor"]
+            : auth.role === "mudur" ? ["ogrenciler", "dersler", "odemeler"]
+                : ["ogretmen-dersler", "ogretmen-hakedis"];
+        if (!validTabs.includes(tab))
+            setTab(validTabs[0]);
+    }, [auth]);
+    useEffect(() => {
+        if (auth && auth.mode === "teacher" && teachers.length > 0 && !teachers.find(t => t.id === auth.teacherId))
+            logout();
+    }, [auth, teachers]);
     const studentCredit = useCallback((studentId) => {
         const paid = payments.filter(p => p.studentId === studentId).length * ODEME_KREDI;
         const used = lessons.filter(l => l.studentId === studentId && (l.status === "yapildi" || l.status === "mazeretsiz")).length;
@@ -302,6 +428,9 @@ function App() {
     if (!allLoaded) {
         return React.createElement("div", { className: "min-h-screen flex items-center justify-center", style: { color: C.inkSoft, background: C.bg } }, "Veriler y\u00FCkleniyor\u2026");
     }
+    if (!auth) {
+        return React.createElement(LoginScreen, { staff: staff, onLoginAdmin: loginAdmin, onLoginTeacher: loginTeacher });
+    }
     const teacherById = (id) => staff.find(s => s.id === id);
     const studentById = (id) => students.find(s => s.id === id);
     const TABS_KURUCU = [
@@ -319,13 +448,12 @@ function App() {
                     React.createElement("div", { className: "text-2xl", style: Object.assign(Object.assign({}, displayFont), { letterSpacing: "0.02em" }) }, "Mimaroba M\u00FCzik Kursu"),
                     React.createElement("span", { className: "text-xs opacity-70 hidden sm:inline" }, "Kurs Y\u00F6netim Sistemi")),
                 React.createElement("div", { className: "flex items-center gap-2 flex-wrap" },
-                    React.createElement("select", { value: role, onChange: e => { setRole(e.target.value); setActiveTeacherId(null); }, className: "text-sm", style: { background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "6px 10px" } },
+                    auth.mode === "admin" ? (React.createElement("select", { value: role, onChange: e => switchAdminRole(e.target.value), className: "text-sm", style: { background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "6px 10px" } },
                         React.createElement("option", { value: "kurucu", style: { color: "#000" } }, "Kurucu giri\u015Fi"),
-                        React.createElement("option", { value: "mudur", style: { color: "#000" } }, "M\u00FCd\u00FCr giri\u015Fi"),
-                        React.createElement("option", { value: "ogretmen", style: { color: "#000" } }, "\u00D6\u011Fretmen giri\u015Fi")),
-                    role === "ogretmen" && (React.createElement("select", { value: activeTeacherId || "", onChange: e => setActiveTeacherId(e.target.value), className: "text-sm", style: { background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "6px 10px" } },
-                        React.createElement("option", { value: "", style: { color: "#000" } }, "\u00D6\u011Fretmen se\u00E7"),
-                        teachers.map(t => React.createElement("option", { key: t.id, value: t.id, style: { color: "#000" } }, t.name)))))),
+                        React.createElement("option", { value: "mudur", style: { color: "#000" } }, "M\u00FCd\u00FCr giri\u015Fi"))) : (React.createElement("span", { className: "text-sm", style: { background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "6px 10px" } },
+                        "\u00D6\u011Fretmen: ",
+                        (teachers.find(t => t.id === activeTeacherId) || {}).name || "—")),
+                    React.createElement("button", { onClick: logout, className: "text-sm", style: { background: "transparent", color: "white", border: "1px solid rgba(255,255,255,0.4)", borderRadius: 8, padding: "6px 10px", cursor: "pointer" } }, "\u00C7\u0131k\u0131\u015F"))),
             React.createElement("div", { className: "max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto pb-2" }, tabs.map(x => (React.createElement("button", { key: x.k, onClick: () => setTab(x.k), className: "text-sm whitespace-nowrap px-3 py-1.5", style: { borderRadius: "8px 8px 0 0", background: tab === x.k ? C.bg : "transparent", color: tab === x.k ? C.primary : "rgba(255,255,255,0.85)", fontWeight: tab === x.k ? 700 : 500, border: "none", cursor: "pointer" } }, x.t))))),
         React.createElement("main", { className: "max-w-6xl mx-auto px-4 py-6" },
             tab === "panel" && React.createElement(PanelTab, { staff, students, lessons, payments, studentCredit }),
@@ -382,7 +510,7 @@ function StatCard({ label, value, tone }) {
 function PersonelTab({ staff, setStaff }) {
     const [showForm, setShowForm] = useState(false);
     const [editing, setEditing] = useState(null);
-    const blankStaff = () => ({ role: "ogretmen", name: "", phone: "", instruments: [] });
+    const blankStaff = () => ({ role: "ogretmen", name: "", phone: "", instruments: [], pin: "" });
     const [form, setForm] = useState(blankStaff());
     function openNew() { setForm(blankStaff()); setEditing(null); setShowForm(true); }
     function openEdit(s) { setForm(Object.assign({}, s)); setEditing(s.id); setShowForm(true); }
@@ -412,6 +540,7 @@ function PersonelTab({ staff, setStaff }) {
                         React.createElement(Th, null, "Rol"),
                         React.createElement(Th, null, "Telefon"),
                         React.createElement(Th, null, "Enstr\u00FCmanlar"),
+                        React.createElement(Th, null, "Giri\u015F PIN'i"),
                         React.createElement(Th, null))),
                 React.createElement("tbody", null, staff.map(s => (React.createElement("tr", { key: s.id },
                     React.createElement(Td, { className: "font-medium" }, s.name),
@@ -419,6 +548,7 @@ function PersonelTab({ staff, setStaff }) {
                         React.createElement(Pill, { tone: roleTone[s.role] }, roleLabel[s.role])),
                     React.createElement(Td, null, s.phone || "—"),
                     React.createElement(Td, null, s.role === "ogretmen" ? (s.instruments || []).join(", ") || "—" : "—"),
+                    React.createElement(Td, null, s.role === "ogretmen" ? (s.pin ? React.createElement("span", { style: monoFont }, s.pin) : React.createElement("span", { style: { color: C.danger } }, "Belirlenmedi")) : "—"),
                     React.createElement(Td, { className: "text-right whitespace-nowrap" },
                         React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("ghost")), { marginRight: 4 }), onClick: () => openEdit(s) }, "D\u00FCzenle"),
                         React.createElement("button", { style: btnStyle("danger"), onClick: () => remove(s.id) }, "Sil"))))))))),
@@ -436,6 +566,9 @@ function PersonelTab({ staff, setStaff }) {
                 React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Telefon"),
                     React.createElement("input", { style: inputStyle, type: "tel", value: form.phone, onChange: e => setForm(Object.assign(Object.assign({}, form), { phone: e.target.value })) })),
+                form.role === "ogretmen" && (React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Giri\u015F PIN'i (\u00F6\u011Fretmen kendi ekran\u0131na girerken kullanacak, 4-6 haneli)"),
+                    React.createElement("input", { style: inputStyle, type: "text", inputMode: "numeric", maxLength: 6, value: form.pin || "", onChange: e => setForm(Object.assign(Object.assign({}, form), { pin: e.target.value.replace(/[^0-9]/g, "") })), placeholder: "\u00D6rn. 1234" }))),
                 form.role === "ogretmen" && (React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Verebilece\u011Fi Enstr\u00FCmanlar"),
                     React.createElement("div", { className: "flex flex-wrap gap-2" }, ENSTRUMANLAR.map(ins => (React.createElement("button", { type: "button", key: ins, onClick: () => toggleInstrument(ins), style: { borderRadius: 10, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", background: form.instruments.includes(ins) ? C.accentSoft : "transparent", border: "1px solid " + (form.instruments.includes(ins) ? C.accent : C.line), color: form.instruments.includes(ins) ? "#8a6a12" : C.ink } }, ins)))))),
