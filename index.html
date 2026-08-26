@@ -558,9 +558,12 @@ function StudentDetailModal({ student, teacherName, payments, lessons, onClose }
         return null;
     const studentPayments = (payments || []).filter(p => p.studentId === student.id).slice().sort((a, b) => b.date.localeCompare(a.date));
     const lastPayment = studentPayments[0];
-    const usedSinceLastPayment = lastPayment
-        ? (lessons || []).filter(l => l.studentId === student.id && (l.status === "yapildi" || l.status === "mazeretsiz") && l.date >= lastPayment.date).slice().sort((a, b) => a.date.localeCompare(b.date))
-        : [];
+    // ödeme varsa son ödeme tarihinden bu yana, hiç ödeme yoksa kayıt tarihinden bu yana yapılan dersler
+    const baseDate = lastPayment ? lastPayment.date : student.registerDate;
+    const usedSinceLastPayment = (lessons || [])
+        .filter(l => l.studentId === student.id && (l.status === "yapildi" || l.status === "mazeretsiz") && l.date >= baseDate)
+        .slice().sort((a, b) => a.date.localeCompare(b.date));
+    const sectionLabel = lastPayment ? "Bu Aidatla Kullanılan Ders Günleri" : "Ödeme Yapılmadan Borçlu Olarak Yapılan Ders Günleri";
     return (React.createElement(Modal, { title: student.name, onClose: onClose },
         React.createElement("div", { className: "text-sm space-y-2" },
             React.createElement(Row, { label: "Veli", value: student.parentName || "—" }),
@@ -575,8 +578,8 @@ function StudentDetailModal({ student, teacherName, payments, lessons, onClose }
             React.createElement(Row, { label: "Durum", value: student.status === "aktif" ? "Aktif" : "Ayrıldı" }),
             React.createElement(Row, { label: "Son \u00D6deme Tarihi", value: lastPayment ? fmtDateTR(lastPayment.date) : "Ödeme yok" }),
             React.createElement("div", { className: "pb-1", style: { borderBottom: "1px solid " + C.line } },
-                React.createElement("div", { style: { color: C.inkSoft, marginBottom: 4 } }, "Bu Aidatla Kullan\u0131lan Ders G\u00FCnleri"),
-                !lastPayment ? (React.createElement("div", { className: "font-medium" }, "\u2014")) : usedSinceLastPayment.length === 0 ? (React.createElement("div", { className: "font-medium" }, "Hen\u00FCz kullan\u0131lmad\u0131")) : (React.createElement("div", { className: "flex flex-wrap gap-1" }, usedSinceLastPayment.map(l => (React.createElement(Pill, { key: l.id, tone: l.status === "mazeretsiz" ? "danger" : "success" }, fmtDateTR(l.date))))))))));
+                React.createElement("div", { style: { color: C.inkSoft, marginBottom: 4 } }, sectionLabel),
+                usedSinceLastPayment.length === 0 ? (React.createElement("div", { className: "font-medium" }, "Hen\u00FCz kullan\u0131lmad\u0131")) : (React.createElement("div", { className: "flex flex-wrap gap-1" }, usedSinceLastPayment.map(l => (React.createElement(Pill, { key: l.id, tone: l.status === "mazeretsiz" ? "danger" : "success" }, fmtDateTR(l.date))))))))));
 }
 function Row({ label, value }) { return React.createElement("div", { className: "flex justify-between pb-1", style: { borderBottom: "1px solid " + C.line } },
     React.createElement("span", { style: { color: C.inkSoft } }, label),
