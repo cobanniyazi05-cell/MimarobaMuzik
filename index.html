@@ -286,9 +286,13 @@ function App() {
                 return;
             if (existingKeys.has(st.id))
                 return;
+            const dersTarihi = dateForWeekday(weekKey, st.weeklyDayIndex);
+            // öğrenci bu tarihte henüz kursa kayıtlı değilse ders oluşturma
+            if (st.registerDate && dersTarihi < st.registerDate)
+                return;
             toAdd.push({
                 id: uid("ders"), studentId: st.id, teacherId: st.teacherId,
-                date: dateForWeekday(weekKey, st.weeklyDayIndex), weekKey,
+                date: dersTarihi, weekKey,
                 status: "bekliyor", isTelafi: false, linkedTo: null, telafiForDate: null,
             });
         });
@@ -326,7 +330,7 @@ function App() {
         React.createElement("main", { className: "max-w-6xl mx-auto px-4 py-6" },
             tab === "panel" && React.createElement(PanelTab, { staff, students, lessons, payments, studentCredit }),
             tab === "personel" && React.createElement(PersonelTab, { staff, setStaff }),
-            tab === "ogrenciler" && React.createElement(OgrencilerTab, { students, setStudents, teachers, payments, setPayments, studentCredit }),
+            tab === "ogrenciler" && React.createElement(OgrencilerTab, { students, setStudents, teachers, payments, setPayments, studentCredit, lessons }),
             tab === "dersler" && React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById }),
             tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit }),
             tab === "hakedis" && React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts }),
@@ -440,7 +444,7 @@ function PersonelTab({ staff, setStaff }) {
                     React.createElement("button", { style: btnStyle("primary"), onClick: save }, "Kaydet")))))));
 }
 /* ---------------- Öğrenciler ---------------- */
-function OgrencilerTab({ students, setStudents, teachers, payments, setPayments, studentCredit }) {
+function OgrencilerTab({ students, setStudents, teachers, payments, setPayments, studentCredit, lessons }) {
     const [showForm, setShowForm] = useState(false);
     const [detail, setDetail] = useState(null);
     const [filter, setFilter] = useState("aktif");
@@ -457,7 +461,10 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
             return;
         const newStudent = Object.assign(Object.assign({}, form), { id: uid("ogr"), fee: Number(form.fee) });
         setStudents([...students, newStudent]);
-        setPayments([...payments, { id: uid("ode"), studentId: newStudent.id, amount: Number(form.fee), date: form.registerDate, note: "İlk kayıt aidatı" }]);
+        // Kayıt anında aidat ödenmediyse (0 TL girildiyse) otomatik ödeme/ders hakkı oluşturma
+        if (Number(form.fee) > 0) {
+            setPayments([...payments, { id: uid("ode"), studentId: newStudent.id, amount: Number(form.fee), date: form.registerDate, note: "İlk kayıt aidatı" }]);
+        }
         setShowForm(false);
     }
     function markLeft(id) { if (confirm("Bu öğrenciyi 'ayrıldı' olarak işaretlemek istediğinize emin misiniz?"))
@@ -544,11 +551,16 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
             React.createElement("div", { className: "flex justify-end gap-2 pt-4" },
                 React.createElement("button", { style: btnStyle("ghost"), onClick: () => setShowForm(false) }, "Vazge\u00E7"),
                 React.createElement("button", { style: btnStyle("primary"), onClick: save }, "Kayd\u0131 Tamamla")))),
-        detail && React.createElement(StudentDetailModal, { student: students.find(s => s.id === detail), teacherName: teacherName, onClose: () => setDetail(null) })));
+        detail && React.createElement(StudentDetailModal, { student: students.find(s => s.id === detail), teacherName: teacherName, payments: payments, lessons: lessons, onClose: () => setDetail(null) })));
 }
-function StudentDetailModal({ student, teacherName, onClose }) {
+function StudentDetailModal({ student, teacherName, payments, lessons, onClose }) {
     if (!student)
         return null;
+    const studentPayments = (payments || []).filter(p => p.studentId === student.id).slice().sort((a, b) => b.date.localeCompare(a.date));
+    const lastPayment = studentPayments[0];
+    const usedSinceLastPayment = lastPayment
+        ? (lessons || []).filter(l => l.studentId === student.id && (l.status === "yapildi" || l.status === "mazeretsiz") && l.date >= lastPayment.date).slice().sort((a, b) => a.date.localeCompare(b.date))
+        : [];
     return (React.createElement(Modal, { title: student.name, onClose: onClose },
         React.createElement("div", { className: "text-sm space-y-2" },
             React.createElement(Row, { label: "Veli", value: student.parentName || "—" }),
@@ -560,7 +572,11 @@ function StudentDetailModal({ student, teacherName, onClose }) {
             React.createElement(Row, { label: "Ders G\u00FCn\u00FC", value: GUNLER[student.weeklyDayIndex] }),
             React.createElement(Row, { label: "Aidat", value: fmtTL(student.fee) }),
             React.createElement(Row, { label: "Kay\u0131t Tarihi", value: fmtDateTR(student.registerDate) }),
-            React.createElement(Row, { label: "Durum", value: student.status === "aktif" ? "Aktif" : "Ayrıldı" }))));
+            React.createElement(Row, { label: "Durum", value: student.status === "aktif" ? "Aktif" : "Ayrıldı" }),
+            React.createElement(Row, { label: "Son \u00D6deme Tarihi", value: lastPayment ? fmtDateTR(lastPayment.date) : "Ödeme yok" }),
+            React.createElement("div", { className: "pb-1", style: { borderBottom: "1px solid " + C.line } },
+                React.createElement("div", { style: { color: C.inkSoft, marginBottom: 4 } }, "Bu Aidatla Kullan\u0131lan Ders G\u00FCnleri"),
+                !lastPayment ? (React.createElement("div", { className: "font-medium" }, "\u2014")) : usedSinceLastPayment.length === 0 ? (React.createElement("div", { className: "font-medium" }, "Hen\u00FCz kullan\u0131lmad\u0131")) : (React.createElement("div", { className: "flex flex-wrap gap-1" }, usedSinceLastPayment.map(l => (React.createElement(Pill, { key: l.id, tone: l.status === "mazeretsiz" ? "danger" : "success" }, fmtDateTR(l.date))))))))));
 }
 function Row({ label, value }) { return React.createElement("div", { className: "flex justify-between pb-1", style: { borderBottom: "1px solid " + C.line } },
     React.createElement("span", { style: { color: C.inkSoft } }, label),
