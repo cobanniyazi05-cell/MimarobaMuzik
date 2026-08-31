@@ -167,6 +167,8 @@ function btnStyle(kind) {
         return Object.assign(Object.assign({}, base), { background: C.accent, color: "white" });
     if (kind === "danger")
         return Object.assign(Object.assign({}, base), { background: C.dangerBg, color: C.danger });
+    if (kind === "warning")
+        return Object.assign(Object.assign({}, base), { background: "#FDE68A", color: "#8a5a00" });
     return Object.assign(Object.assign({}, base), { background: "transparent", color: C.ink, border: "1px solid " + C.line });
 }
 /* ---------------- Firestore ile gerçek zamanlı veri kancası ---------------- */
@@ -478,7 +480,7 @@ function App() {
             localStorage.setItem(AUTH_KEY, JSON.stringify(next));
         }
         catch (e) { }
-        setTab(chosenRole === "kurucu" ? "panel" : "ogrenciler");
+        setTab("panel");
     }
     function loginTeacher(teacherId) {
         const next = { mode: "teacher", role: "ogretmen", teacherId };
@@ -501,7 +503,7 @@ function App() {
         if (!auth)
             return;
         const validTabs = auth.role === "kurucu" ? ["panel", "personel", "ogrenciler", "dersler", "odemeler", "hakedis", "giderler", "rapor"]
-            : auth.role === "mudur" ? ["ogrenciler", "dersler", "odemeler"]
+            : auth.role === "mudur" ? ["panel", "personel", "dersler", "hakedis"]
                 : ["ogretmen-dersler", "ogretmen-hakedis"];
         if (!validTabs.includes(tab))
             setTab(validTabs[0]);
@@ -555,7 +557,7 @@ function App() {
         { k: "dersler", t: "Ders Takvimi" }, { k: "odemeler", t: "Ödemeler" }, { k: "hakedis", t: "Hakedişler" },
         { k: "giderler", t: "Giderler" }, { k: "rapor", t: "Kâr/Zarar" },
     ];
-    const TABS_MUDUR = [{ k: "ogrenciler", t: "Öğrenciler" }, { k: "dersler", t: "Ders Takvimi" }, { k: "odemeler", t: "Ödemeler" }];
+    const TABS_MUDUR = [{ k: "panel", t: "Panel" }, { k: "personel", t: "Personel" }, { k: "dersler", t: "Ders Takvimi" }, { k: "hakedis", t: "Hakedişler" }];
     const TABS_OGRETMEN = [{ k: "ogretmen-dersler", t: "Derslerim" }, { k: "ogretmen-hakedis", t: "Hakedişim" }];
     const tabs = role === "kurucu" ? TABS_KURUCU : role === "mudur" ? TABS_MUDUR : TABS_OGRETMEN;
     return (React.createElement("div", { className: "min-h-screen", style: { background: C.bg, color: C.ink } },
@@ -594,7 +596,7 @@ function App() {
             tab === "dersler" && React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById }),
             tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit }),
             tab === "hakedis" && React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts }),
-            tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses }),
+            tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses, payouts, teachers }),
             tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses }),
             tab === "ogretmen-dersler" && (activeTeacherId
                 ? React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId: activeTeacherId })
@@ -981,7 +983,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                             React.createElement("button", { style: btnStyle("primary"), onClick: () => setStatus(l.id, "yapildi") }, "Yap\u0131ld\u0131"),
                             React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(l.id, "mazeretli") }, "Mazeretli"),
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(l.id, "mazeretsiz") }, "Mazeretsiz"),
-                            React.createElement("button", { style: btnStyle("ghost"), onClick: () => setStatus(l.id, "pas") }, "Pas"))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => setLessons(lessons.map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x)) }, "Geri Al")))));
+                            React.createElement("button", { style: btnStyle("warning"), onClick: () => setStatus(l.id, "pas") }, "Pas"))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => setLessons(lessons.map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x)) }, "Geri Al")))));
                 }))))),
         telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => setTelafiFor(null) },
             React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "\u00D6\u011Frenci \u00F6nceden haber verdi\u011Fi i\u00E7in bu dersin hakk\u0131 yanmayacak. Telafi dersi i\u00E7in yeni bir tarih se\u00E7in."),
@@ -1139,14 +1141,20 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
         })))));
 }
 /* ---------------- Giderler ---------------- */
-function GiderlerTab({ expenses, setExpenses }) {
+function GiderlerTab({ expenses, setExpenses, payouts, teachers }) {
     const [desc, setDesc] = useState("");
     const [amount, setAmount] = useState("");
     const [date, setDate] = useState(toISODate(new Date()));
     function add() { if (!desc.trim() || !amount)
         return; setExpenses([...expenses, { id: uid("gid"), description: desc, amount: Number(amount), date }]); setDesc(""); setAmount(""); }
     function remove(id) { setExpenses(expenses.filter(e => e.id !== id)); }
-    const sorted = expenses.slice().sort((a, b) => b.date.localeCompare(a.date));
+    // Ödendi olarak işaretlenen öğretmen hakedişleri de gider olarak burada listelenir
+    // (silinemezler — bunlar Hakedişler sekmesinden "Geri al" ile geri alınabilir).
+    const payoutRows = (payouts || []).filter(p => p.paid && p.paidDate).map(p => {
+        const tc = (teachers || []).find(t => t.id === p.teacherId);
+        return { id: "payout-" + p.id, description: "Öğretmen Hakedişi — " + (tc ? tc.name : "—"), amount: p.amount, date: p.paidDate, isPayout: true };
+    });
+    const sorted = expenses.slice().concat(payoutRows).sort((a, b) => b.date.localeCompare(a.date));
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Kurucu Giri\u015Fi", title: "Giderler" }),
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20 }) },
@@ -1175,8 +1183,9 @@ function GiderlerTab({ expenses, setExpenses }) {
                     React.createElement(Td, { style: monoFont }, fmtDateTR(e.date)),
                     React.createElement(Td, null, e.description),
                     React.createElement(Td, { style: monoFont }, fmtTL(e.amount)),
-                    React.createElement(Td, { className: "text-right" },
-                        React.createElement("button", { style: btnStyle("danger"), onClick: () => remove(e.id) }, "Sil")))))))))));
+                    React.createElement(Td, { className: "text-right" }, e.isPayout
+                        ? React.createElement(Pill, { tone: "warning" }, "Haked\u0131\u015F")
+                        : React.createElement("button", { style: btnStyle("danger"), onClick: () => remove(e.id) }, "Sil")))))))))));
 }
 /* ---------------- Kâr / Zarar Raporu ---------------- */
 function RaporTab({ payments, payouts, expenses }) {
