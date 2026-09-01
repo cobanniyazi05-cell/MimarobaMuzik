@@ -513,11 +513,13 @@ function App() {
             logout();
     }, [auth, teachers]);
     const studentCredit = useCallback((studentId) => {
+        const st = students.find(s => s.id === studentId);
         const paid = payments.filter(p => p.studentId === studentId)
             .reduce((sum, p) => sum + (Number(p.amount) >= UCRET_BIREYSEL_CIFT ? ODEME_KREDI_CIFT : ODEME_KREDI), 0);
         const used = lessons.filter(l => l.studentId === studentId && (l.status === "yapildi" || l.status === "mazeretsiz")).length;
-        return paid - used;
-    }, [payments, lessons]);
+        const manualAdj = st && st.creditAdjustment ? Number(st.creditAdjustment) : 0;
+        return paid - used + manualAdj;
+    }, [payments, lessons, students]);
     const ensureWeekLessons = useCallback((weekKey) => {
         const existingPairs = new Set(lessons.filter(l => l.weekKey === weekKey && !l.isTelafi).map(l => l.studentId + "|" + l.date));
         const toAdd = [];
@@ -722,20 +724,20 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
         name: "", parentName: "", phone: "", address: "",
         instrument: ENSTRUMANLAR[0], courseType: "bireysel",
         teacherId: "", fee: UCRET_BIREYSEL, registerDate: toISODate(new Date()),
-        weeklyDayIndex: 0, weeklyDayIndex2: "", status: "aktif",
+        weeklyDayIndex: 0, weeklyDayIndex2: "", status: "aktif", creditAdjustment: 0,
     });
     const [form, setForm] = useState(blank());
     const [editing, setEditing] = useState(null);
     function openNew() { setForm(blank()); setEditing(null); setShowForm(true); }
-    function openEdit(s) { setForm(Object.assign({}, s)); setEditing(s.id); setShowForm(true); }
+    function openEdit(s) { setForm(Object.assign(Object.assign({}, blank()), s)); setEditing(s.id); setShowForm(true); }
     function save() {
         if (!form.name.trim() || !form.teacherId)
             return;
         if (editing) {
-            setStudents(students.map(s => s.id === editing ? Object.assign(Object.assign({}, form), { id: editing, fee: Number(form.fee) }) : s));
+            setStudents(students.map(s => s.id === editing ? Object.assign(Object.assign({}, form), { id: editing, fee: Number(form.fee), creditAdjustment: Number(form.creditAdjustment) || 0 }) : s));
         }
         else {
-            const newStudent = Object.assign(Object.assign({}, form), { id: uid("ogr"), fee: Number(form.fee) });
+            const newStudent = Object.assign(Object.assign({}, form), { id: uid("ogr"), fee: Number(form.fee), creditAdjustment: Number(form.creditAdjustment) || 0 });
             setStudents([...students, newStudent]);
             // Kayıt anında aidat ödenmediyse (0 TL girildiyse) otomatik ödeme/ders hakkı oluşturma
             if (Number(form.fee) > 0) {
@@ -865,7 +867,11 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                         fmtTL(UCRET_BIREYSEL_CIFT),
                         " \u2014 8 ders hakk\u0131; grup ",
                         fmtTL(UCRET_GRUP),
-                        " \u2014 4 ders hakk\u0131."))),
+                        " \u2014 4 ders hakk\u0131.")),
+                editing && React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Ders Hakk\u0131 Manuel D\u00FCzeltme (+/-)"),
+                    React.createElement("input", { style: inputStyle, type: "number", value: form.creditAdjustment, onChange: e => setForm(Object.assign(Object.assign({}, form), { creditAdjustment: e.target.value })) }),
+                    React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, "Ders takvimindeki kay\u0131tlarla ger\u00E7ek durum uyu\u015Fmuyorsa, ders hakk\u0131n\u0131 buradan elle d\u00FCzeltebilirsiniz. \u00D6rn: eksik g\u00F6r\u00FCn\u00FCyorsa pozitif, fazla g\u00F6r\u00FCn\u00FCyorsa negatif say\u0131 girin."))),
             React.createElement("div", { className: "flex justify-end gap-2 pt-4" },
                 React.createElement("button", { style: btnStyle("ghost"), onClick: () => setShowForm(false) }, "Vazge\u00E7"),
                 React.createElement("button", { style: btnStyle("primary"), onClick: save }, editing ? "Değişiklikleri Kaydet" : "Kaydı Tamamla")))),
@@ -897,6 +903,7 @@ function StudentDetailModal({ student, teacherName, payments, lessons, studentCr
             React.createElement(Row, { label: "Durum", value: student.status === "aktif" ? "Aktif" : "Ayrıldı" }),
             React.createElement(Row, { label: "Son \u00D6deme Tarihi", value: lastPayment ? fmtDateTR(lastPayment.date) : "Ödeme yok" }),
             credit !== null && React.createElement(Row, { label: "Ders Hakk\u0131 (g\u00FCncel)", value: credit < 0 ? Math.abs(credit) + " ders bor\u00E7lu" : credit + " ders hakk\u0131" }),
+            Number(student.creditAdjustment) ? React.createElement(Row, { label: "Manuel D\u00FCzeltme", value: (Number(student.creditAdjustment) > 0 ? "+" : "") + Number(student.creditAdjustment) }) : null,
             React.createElement("div", { className: "pb-1", style: { borderBottom: "1px solid " + C.line } },
                 React.createElement("div", { style: { color: C.inkSoft, marginBottom: 4 } }, "Yap\u0131lan Ders G\u00FCnleri (T\u00FCm Zamanlar)"),
                 usedAllTime.length === 0 ? (React.createElement("div", { className: "font-medium" }, "Hen\u00FCz kullan\u0131lmad\u0131")) : (React.createElement("div", { className: "flex flex-wrap gap-1" }, usedAllTime.map(l => (React.createElement(Pill, { key: l.id, tone: l.status === "mazeretsiz" ? "danger" : "success" }, fmtDateTR(l.date))))))))));
