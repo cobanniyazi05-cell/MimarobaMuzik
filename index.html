@@ -503,7 +503,7 @@ function App() {
         if (!auth)
             return;
         const validTabs = auth.role === "kurucu" ? ["panel", "personel", "ogrenciler", "dersler", "odemeler", "hakedis", "giderler", "rapor"]
-            : auth.role === "mudur" ? ["panel", "personel", "dersler", "hakedis"]
+            : auth.role === "mudur" ? ["panel", "personel", "ogrenciler", "dersler", "hakedis"]
                 : ["ogretmen-dersler", "ogretmen-hakedis"];
         if (!validTabs.includes(tab))
             setTab(validTabs[0]);
@@ -559,7 +559,7 @@ function App() {
         { k: "dersler", t: "Ders Takvimi" }, { k: "odemeler", t: "Ödemeler" }, { k: "hakedis", t: "Hakedişler" },
         { k: "giderler", t: "Giderler" }, { k: "rapor", t: "Kâr/Zarar" },
     ];
-    const TABS_MUDUR = [{ k: "panel", t: "Panel" }, { k: "personel", t: "Personel" }, { k: "dersler", t: "Ders Takvimi" }, { k: "hakedis", t: "Hakedişler" }];
+    const TABS_MUDUR = [{ k: "panel", t: "Panel" }, { k: "personel", t: "Personel" }, { k: "ogrenciler", t: "Öğrenciler" }, { k: "dersler", t: "Ders Takvimi" }, { k: "hakedis", t: "Hakedişler" }];
     const TABS_OGRETMEN = [{ k: "ogretmen-dersler", t: "Derslerim" }, { k: "ogretmen-hakedis", t: "Hakedişim" }];
     const tabs = role === "kurucu" ? TABS_KURUCU : role === "mudur" ? TABS_MUDUR : TABS_OGRETMEN;
     return (React.createElement("div", { className: "min-h-screen", style: { background: C.bg, color: C.ink } },
@@ -616,6 +616,8 @@ function PanelTab({ staff, students, lessons, payments, studentCredit }) {
     const bugunkuDersler = lessons.filter(l => l.date === bugun);
     const thisWeek = currentWeekKey();
     const buHaftaGelir = payments.filter(p => weekKeyOf(fromISODate(p.date)) === thisWeek).reduce((a, p) => a + p.amount, 0);
+    const thisMonth = monthKeyOf(bugun);
+    const buAyGelir = payments.filter(p => monthKeyOf(p.date) === thisMonth).reduce((a, p) => a + p.amount, 0);
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Genel Bak\u0131\u015F", title: "Panel" }),
         React.createElement("div", { className: "grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" },
@@ -627,7 +629,11 @@ function PanelTab({ staff, students, lessons, payments, studentCredit }) {
             React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
                 React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Bu haftan\u0131n tahsilat\u0131"),
                 React.createElement("div", { className: "text-2xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buHaftaGelir)),
-                React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, weekRangeLabel(thisWeek))),
+                React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, weekRangeLabel(thisWeek)),
+                React.createElement("div", { className: "mt-3 pt-3", style: { borderTop: "1px solid " + C.line } },
+                    React.createElement("h3", { className: "text-sm mb-1", style: { color: C.inkSoft } }, "Bu ay\u0131n toplam tahsilat\u0131"),
+                    React.createElement("div", { className: "text-xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buAyGelir)),
+                    React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, monthLabel(thisMonth)))),
             React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
                 React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Bor\u00E7lu \u00F6\u011Frenciler"),
                 borcluSayisi === 0 ? React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, "\u015Eu anda bor\u00E7lu \u00F6\u011Frenci yok.") : (React.createElement("ul", { className: "text-sm space-y-1" }, aktifOgrenci.filter(s => studentCredit(s.id) < 0).slice(0, 6).map(s => (React.createElement("li", { key: s.id, className: "flex justify-between" },
@@ -739,10 +745,9 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
         else {
             const newStudent = Object.assign(Object.assign({}, form), { id: uid("ogr"), fee: Number(form.fee), creditAdjustment: Number(form.creditAdjustment) || 0 });
             setStudents([...students, newStudent]);
-            // Kayıt anında aidat ödenmediyse (0 TL girildiyse) otomatik ödeme/ders hakkı oluşturma
-            if (Number(form.fee) > 0) {
-                setPayments([...payments, { id: uid("ode"), studentId: newStudent.id, amount: Number(form.fee), date: form.registerDate, note: "İlk kayıt aidatı" }]);
-            }
+            // Not: kayıt anında otomatik "ilk kayıt aidatı" ödemesi OLUŞTURULMAZ.
+            // Öğrenci kayıt tarihinde aidatını ödememiş olabilir; aidat / ders hakkı
+            // yalnızca "Ödeme Al" sekmesinden fiilen alınan ödemelerle işlenir.
         }
         setShowForm(false);
     }
@@ -916,6 +921,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     const [weekKey, setWeekKey] = useState(currentWeekKey());
     const [telafiFor, setTelafiFor] = useState(null);
     const [telafiDate, setTelafiDate] = useState("");
+    const [telafiWeekKey, setTelafiWeekKey] = useState(null);
     useEffect(() => { ensureWeekLessons(weekKey); /* eslint-disable-next-line */ }, [weekKey]);
     let weekLessons = lessons.filter(l => l.weekKey === weekKey || (l.isTelafi && l.date && weekKeyOf(fromISODate(l.date)) === weekKey));
     if (onlyTeacherId)
@@ -923,15 +929,23 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     weekLessons = weekLessons.slice().sort((a, b) => a.date.localeCompare(b.date));
     function setStatus(lessonId, status) {
         if (status === "mazeretli") {
+            const orig = lessons.find(l => l.id === lessonId);
             setTelafiFor(lessonId);
+            setTelafiWeekKey(orig ? weekKeyOf(fromISODate(orig.date)) : weekKey);
             setTelafiDate("");
             return;
         }
         setLessons(lessons.map(l => l.id === lessonId ? Object.assign(Object.assign({}, l), { status }) : l));
     }
+    const telafiWeekStart = telafiWeekKey;
+    const telafiWeekEnd = telafiWeekKey ? (() => { const d = fromISODate(telafiWeekKey); d.setDate(d.getDate() + 6); return toISODate(d); })() : null;
     function confirmMazeret() {
         if (!telafiDate) {
             alert("Telafi ders günü seçin.");
+            return;
+        }
+        if (telafiWeekKey && (telafiDate < telafiWeekStart || telafiDate > telafiWeekEnd)) {
+            alert("Telafi tarihi, sadece dersin ait olduğu haftanın günleri (" + weekRangeLabel(telafiWeekKey) + ") arasından seçilebilir.");
             return;
         }
         const orig = lessons.find(l => l.id === telafiFor);
@@ -941,6 +955,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
         updated.push({ id: uid("ders"), studentId: orig.studentId, teacherId: orig.teacherId, date: telafiDate, weekKey: weekKeyOf(fromISODate(telafiDate)), status: "bekliyor", isTelafi: true, linkedTo: orig.id, telafiForDate: orig.date });
         setLessons(updated);
         setTelafiFor(null);
+        setTelafiWeekKey(null);
     }
     const statusMeta = {
         bekliyor: { label: "Bekliyor", tone: "neutral" }, yapildi: { label: "Yapıldı", tone: "success" },
@@ -994,12 +1009,12 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(l.id, "mazeretsiz") }, "Mazeretsiz"),
                             React.createElement("button", { style: btnStyle("warning"), onClick: () => setStatus(l.id, "pas") }, "Pas"))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => setLessons(lessons.map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x)) }, "Geri Al")))));
                 }))))),
-        telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => setTelafiFor(null) },
-            React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "\u00D6\u011Frenci \u00F6nceden haber verdi\u011Fi i\u00E7in bu dersin hakk\u0131 yanmayacak. Telafi dersi i\u00E7in yeni bir tarih se\u00E7in."),
+        telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => { setTelafiFor(null); setTelafiWeekKey(null); } },
+            React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "\u00D6\u011Frenci \u00F6nceden haber verdi\u011Fi i\u00E7in bu dersin hakk\u0131 yanmayacak. Telafi dersi i\u00E7in, dersin ait oldu\u011Fu haftan\u0131n (" + (telafiWeekKey ? weekRangeLabel(telafiWeekKey) : "") + ") i\u00E7inden bir g\u00FCn se\u00E7in."),
             React.createElement("label", { style: labelStyle }, "Telafi Tarihi"),
-            React.createElement("input", { style: inputStyle, type: "date", value: telafiDate, onChange: e => setTelafiDate(e.target.value) }),
+            React.createElement("input", { style: inputStyle, type: "date", value: telafiDate, min: telafiWeekStart, max: telafiWeekEnd, onChange: e => setTelafiDate(e.target.value) }),
             React.createElement("div", { className: "flex justify-end gap-2 pt-4" },
-                React.createElement("button", { style: btnStyle("ghost"), onClick: () => setTelafiFor(null) }, "Vazge\u00E7"),
+                React.createElement("button", { style: btnStyle("ghost"), onClick: () => { setTelafiFor(null); setTelafiWeekKey(null); } }, "Vazge\u00E7"),
                 React.createElement("button", { style: btnStyle("primary"), onClick: confirmMazeret }, "Kaydet"))))));
 }
 /* ---------------- Ödemeler ---------------- */
@@ -1164,6 +1179,8 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers }) {
         return { id: "payout-" + p.id, description: "Öğretmen Hakedişi — " + (tc ? tc.name : "—"), amount: p.amount, date: p.paidDate, isPayout: true };
     });
     const sorted = expenses.slice().concat(payoutRows).sort((a, b) => b.date.localeCompare(a.date));
+    const thisMonth = monthKeyOf(date || toISODate(new Date()));
+    const buAyGiderToplam = sorted.filter(e => monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Kurucu Giri\u015Fi", title: "Giderler" }),
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20 }) },
@@ -1179,7 +1196,10 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers }) {
                     React.createElement("label", { style: labelStyle }, "Tarih"),
                     React.createElement("input", { style: inputStyle, type: "date", value: date, onChange: e => setDate(e.target.value) }))),
             React.createElement("div", { className: "flex justify-end mt-3" },
-                React.createElement("button", { style: btnStyle("primary"), onClick: add }, "Gideri Kaydet"))),
+                React.createElement("button", { style: btnStyle("primary"), onClick: add }, "Gideri Kaydet")),
+            React.createElement("div", { className: "flex justify-between items-center mt-3 pt-3", style: { borderTop: "1px solid " + C.line } },
+                React.createElement("span", { className: "text-sm", style: { color: C.inkSoft } }, monthLabel(thisMonth) + " toplam gideri"),
+                React.createElement("span", { className: "text-lg", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buAyGiderToplam)))),
         sorted.length === 0 ? React.createElement(EmptyState, { text: "Hen\u00FCz gider kayd\u0131 yok." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
             React.createElement("table", { className: "w-full" },
                 React.createElement("thead", null,
