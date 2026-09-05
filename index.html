@@ -86,7 +86,7 @@
 
 <script>
 "use strict";
-const { useState, useEffect, useMemo, useCallback } = React;
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
 /* ---------------- Firebase başlatma ---------------- */
 let app, db, auth, firebaseReady = false, firebaseError = null;
 try {
@@ -144,7 +144,7 @@ function monthLabel(mk) {
 }
 const UCRET_BIREYSEL = 5400;
 const UCRET_BIREYSEL_CIFT = 10800; // haftada 2 gün (8 ders) alan öğrenciler için
-const UCRET_GRUP = 4500;
+const UCRET_GRUP = 3600;
 const ODEME_KREDI = 4;
 const ODEME_KREDI_CIFT = 8;
 const OGRETMEN_BIREYSEL_SAAT = 650;
@@ -512,6 +512,26 @@ function App() {
         if (auth && auth.mode === "teacher" && teachers.length > 0 && !teachers.find(t => t.id === auth.teacherId))
             logout();
     }, [auth, teachers]);
+    // Tek seferlik geçmiş veri düzeltmesi: grup dersi öğrenci başı aidatı
+    // yanlışlıkla 4500 TL olarak girilmişti, doğrusu 3600 TL. Hem mevcut
+    // grup öğrencilerinin kayıtlı aidatını hem de geçmişte 4500 TL olarak
+    // alınmış grup öğrencisi ödemelerini 3600 TL'ye düzeltir.
+    const grupUcretMigratedRef = useRef(false);
+    useEffect(() => {
+        if (!allLoaded || grupUcretMigratedRef.current)
+            return;
+        grupUcretMigratedRef.current = true;
+        const ESKI_UCRET_GRUP = 4500;
+        const studentsNeedFix = students.some(s => s.courseType === "grup" && Number(s.fee) === ESKI_UCRET_GRUP);
+        if (studentsNeedFix) {
+            setStudents(students.map(s => (s.courseType === "grup" && Number(s.fee) === ESKI_UCRET_GRUP) ? Object.assign(Object.assign({}, s), { fee: UCRET_GRUP }) : s));
+        }
+        const grupStudentIds = new Set(students.filter(s => s.courseType === "grup").map(s => s.id));
+        const paymentsNeedFix = payments.some(p => grupStudentIds.has(p.studentId) && Number(p.amount) === ESKI_UCRET_GRUP);
+        if (paymentsNeedFix) {
+            setPayments(payments.map(p => (grupStudentIds.has(p.studentId) && Number(p.amount) === ESKI_UCRET_GRUP) ? Object.assign(Object.assign({}, p), { amount: UCRET_GRUP }) : p));
+        }
+    }, [allLoaded]);
     const studentCredit = useCallback((studentId) => {
         const st = students.find(s => s.id === studentId);
         const paid = payments.filter(p => p.studentId === studentId)
