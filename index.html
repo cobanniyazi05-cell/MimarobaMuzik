@@ -142,6 +142,31 @@ function monthLabel(mk) {
     const ay = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
     return ay[m - 1] + " " + y;
 }
+// --- WhatsApp "tıkla-gönder" yardımcıları ---
+// Türkiye telefon numaralarını 90XXXXXXXXXX formatına normalize eder.
+function normalizePhoneTR(phone) {
+    if (!phone)
+        return "";
+    let digits = String(phone).replace(/\D/g, "");
+    if (digits.startsWith("0"))
+        digits = "90" + digits.slice(1);
+    else if (digits.startsWith("90") && digits.length === 12) { /* zaten doğru */ }
+    else if (digits.length === 10)
+        digits = "90" + digits;
+    return digits;
+}
+function waLink(phone, message) {
+    const digits = normalizePhoneTR(phone);
+    if (!digits)
+        return null;
+    return "https://wa.me/" + digits + "?text=" + encodeURIComponent(message);
+}
+function WaButton({ phone, message, label, kind }) {
+    const link = waLink(phone, message);
+    if (!link)
+        return React.createElement("span", { className: "text-xs", style: { color: C.inkSoft } }, "Telefon yok");
+    return React.createElement("a", { href: link, target: "_blank", rel: "noopener noreferrer", style: Object.assign(Object.assign({}, btnStyle(kind || "success")), { textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }) }, label || "WhatsApp'ta G\u00F6nder");
+}
 const UCRET_BIREYSEL = 5400;
 const UCRET_BIREYSEL_CIFT = 10800; // haftada 2 gün (8 ders) alan öğrenciler için
 const UCRET_GRUP = 3600;
@@ -169,6 +194,8 @@ function btnStyle(kind) {
         return Object.assign(Object.assign({}, base), { background: C.dangerBg, color: C.danger });
     if (kind === "warning")
         return Object.assign(Object.assign({}, base), { background: "#FDE68A", color: "#8a5a00" });
+    if (kind === "success")
+        return Object.assign(Object.assign({}, base), { background: "#25D366", color: "white" });
     return Object.assign(Object.assign({}, base), { background: "transparent", color: C.ink, border: "1px solid " + C.line });
 }
 /* ---------------- Firestore ile gerçek zamanlı veri kancası ---------------- */
@@ -616,7 +643,7 @@ function App() {
             tab === "personel" && React.createElement(PersonelTab, { staff, setStaff, students }),
             tab === "ogrenciler" && React.createElement(OgrencilerTab, { students, setStudents, teachers, payments, setPayments, studentCredit, lessons, setLessons }),
             tab === "dersler" && React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, canMarkPas: true }),
-            tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit }),
+            tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit, staff }),
             tab === "hakedis" && React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts }),
             tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses, payouts, teachers }),
             tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses }),
@@ -656,11 +683,13 @@ function PanelTab({ staff, students, lessons, payments, studentCredit }) {
                     React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, monthLabel(thisMonth)))),
             React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
                 React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Bor\u00E7lu \u00F6\u011Frenciler"),
-                borcluSayisi === 0 ? React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, "\u015Eu anda bor\u00E7lu \u00F6\u011Frenci yok.") : (React.createElement("ul", { className: "text-sm space-y-1" }, aktifOgrenci.filter(s => studentCredit(s.id) < 0).slice(0, 6).map(s => (React.createElement("li", { key: s.id, className: "flex justify-between" },
+                borcluSayisi === 0 ? React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, "\u015Eu anda bor\u00E7lu \u00F6\u011Frenci yok.") : (React.createElement("ul", { className: "text-sm space-y-2" }, aktifOgrenci.filter(s => studentCredit(s.id) < 0).slice(0, 6).map(s => (React.createElement("li", { key: s.id, className: "flex justify-between items-center gap-2" },
                     React.createElement("span", null, s.name),
-                    React.createElement(Pill, { tone: "danger" },
-                        Math.abs(studentCredit(s.id)),
-                        " ders bor\u00E7lu"))))))))));
+                    React.createElement("div", { className: "flex items-center gap-2" },
+                        React.createElement(Pill, { tone: "danger" },
+                            Math.abs(studentCredit(s.id)),
+                            " ders bor\u00E7lu"),
+                        React.createElement(WaButton, { phone: s.phone, label: "Hat\u0131rlat", message: "Merhaba, " + s.name + " adl\u0131 \u00F6\u011Frencimizin ders hakk\u0131 bitti. Aidat yenileme zaman\u0131 gelmi\u015Ftir." })))))))))));
 }
 function StatCard({ label, value, tone }) {
     const color = tone === "danger" ? C.danger : tone === "success" ? C.success : C.ink;
@@ -829,6 +858,7 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                             " ders hakk\u0131")),
                         React.createElement(Td, { className: "text-right whitespace-nowrap" },
                             React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("ghost")), { marginRight: 4 }), onClick: () => openEdit(s) }, "D\u00FCzenle"),
+                            credit <= 1 && React.createElement(WaButton, { phone: s.phone, label: "Aidat Hat\u0131rlat", message: "Merhaba, " + s.name + " adl\u0131 \u00F6\u011Frencimizin ders hakk\u0131 " + (credit <= 0 ? "bitti" : "azald\u0131") + ". Aidat yenileme zaman\u0131 gelmi\u015Ftir." }),
                             s.status === "aktif" && React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("danger")), { marginRight: 4 }), onClick: () => markLeft(s.id) }, "Ayr\u0131ld\u0131"),
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => removeStudent(s.id) }, "Sil"))));
                 }))))),
@@ -1034,7 +1064,8 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                             React.createElement("button", { style: btnStyle("primary"), onClick: () => setStatus(l.id, "yapildi") }, "Yap\u0131ld\u0131"),
                             React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(l.id, "mazeretli") }, "Mazeretli"),
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(l.id, "mazeretsiz") }, "Mazeretsiz"),
-                            React.createElement("button", { style: btnStyle("warning"), onClick: () => setStatus(l.id, "pas") }, "Pas"))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => setLessons(lessons.map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x)) }, "Geri Al")))));
+                            React.createElement("button", { style: btnStyle("warning"), onClick: () => setStatus(l.id, "pas") }, "Pas"),
+                            React.createElement(WaButton, { phone: st.phone, label: "Hat\u0131rlat", message: "Merhaba, " + st.name + " adl\u0131 \u00F6\u011Frencimizin " + fmtDateTR(l.date) + " tarihli dersini hat\u0131rlatmak isteriz." }))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => setLessons(lessons.map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x)) }, "Geri Al")))));
                 }))))),
         telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => { setTelafiFor(null); setTelafiWeekKey(null); } },
             React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "\u00D6\u011Frenci \u00F6nceden haber verdi\u011Fi i\u00E7in bu dersin hakk\u0131 yanmayacak. Telafi dersi i\u00E7in, dersin ait oldu\u011Fu haftan\u0131n (" + (telafiWeekKey ? weekRangeLabel(telafiWeekKey) : "") + ") i\u00E7inden bir g\u00FCn se\u00E7in."),
@@ -1049,17 +1080,21 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                 React.createElement("button", { style: btnStyle("primary"), onClick: () => setShowPasWarning(false) }, "Tamam"))))));
 }
 /* ---------------- Ödemeler ---------------- */
-function OdemelerTab({ students, payments, setPayments, studentCredit }) {
+function OdemelerTab({ students, payments, setPayments, studentCredit, staff }) {
     const [studentId, setStudentId] = useState("");
     const [amount, setAmount] = useState("");
     const [date, setDate] = useState(toISODate(new Date()));
+    const [justAdded, setJustAdded] = useState(null);
     const aktif = students.filter(s => s.status === "aktif");
+    const sahipler = (staff || []).filter(s => s.role === "sahip" && s.phone);
     useEffect(() => { const st = aktif.find(s => s.id === studentId); if (st)
         setAmount(st.fee); /* eslint-disable-next-line */ }, [studentId]);
     function addPayment() {
         if (!studentId || !amount)
             return;
         setPayments([...payments, { id: uid("ode"), studentId, amount: Number(amount), date, note: "Aidat ödemesi" }]);
+        const st = students.find(s => s.id === studentId);
+        setJustAdded({ studentName: st ? st.name : "—", amount: Number(amount), date });
         setStudentId("");
         setAmount("");
         setDate(toISODate(new Date()));
@@ -1068,6 +1103,9 @@ function OdemelerTab({ students, payments, setPayments, studentCredit }) {
         if (confirm("Bu ödeme kaydını silmek istediğinize emin misiniz? Öğrencinin ders hakkı buna göre azalacak.")) {
             setPayments(payments.filter(p => p.id !== id));
         }
+    }
+    function paymentMsg(info) {
+        return "Merhaba, " + info.studentName + " i\u00E7in " + fmtTL(info.amount) + " tutar\u0131nda \u00F6deme al\u0131nd\u0131. Tarih: " + fmtDateTR(info.date) + ".";
     }
     const sorted = payments.slice().sort((a, b) => b.date.localeCompare(a.date));
     const studentName = (id) => (students.find(s => s.id === id) || {}).name || "—";
@@ -1090,7 +1128,12 @@ function OdemelerTab({ students, payments, setPayments, studentCredit }) {
                 React.createElement("button", { style: btnStyle("primary"), onClick: addPayment }, "\u00D6demeyi Kaydet (+4 ders hakk\u0131)")),
             studentId && React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } },
                 "Mevcut ders hakk\u0131: ",
-                studentCredit(studentId))),
+                studentCredit(studentId)),
+            justAdded && React.createElement("div", { className: "mt-4 pt-3", style: { borderTop: "1px solid " + C.line } },
+                React.createElement("p", { className: "text-sm mb-2" }, "\u00D6deme kaydedildi. Kurs sahibine WhatsApp'tan haber verebilirsiniz:"),
+                React.createElement("div", { className: "flex gap-2 flex-wrap" }, sahipler.length === 0
+                    ? React.createElement("span", { className: "text-xs", style: { color: C.inkSoft } }, "Kay\u0131tl\u0131 telefonu olan kurs sahibi yok (Personel sekmesinden ekleyin).")
+                    : sahipler.map(s => React.createElement(WaButton, { key: s.id, phone: s.phone, message: paymentMsg(justAdded), label: s.name + "'a Bildir" }))))),
         React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "\u00D6deme Ge\u00E7mi\u015Fi"),
         sorted.length === 0 ? React.createElement(EmptyState, { text: "Hen\u00FCz \u00F6deme kayd\u0131 yok." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
             React.createElement("table", { className: "w-full" },
