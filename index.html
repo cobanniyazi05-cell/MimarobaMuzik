@@ -642,13 +642,13 @@ function App() {
             tab === "panel" && React.createElement(PanelTab, { staff, students, lessons, payments, studentCredit }),
             tab === "personel" && React.createElement(PersonelTab, { staff, setStaff, students }),
             tab === "ogrenciler" && React.createElement(OgrencilerTab, { students, setStudents, teachers, payments, setPayments, studentCredit, lessons, setLessons }),
-            tab === "dersler" && React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, canMarkPas: true }),
+            tab === "dersler" && React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, canMarkPas: true, payouts, setPayouts }),
             tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit, staff }),
             tab === "hakedis" && React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts }),
             tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses, payouts, teachers }),
             tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses }),
             tab === "ogretmen-dersler" && (activeTeacherId
-                ? React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId: activeTeacherId, canMarkPas: false })
+                ? React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId: activeTeacherId, canMarkPas: false, payouts, setPayouts })
                 : React.createElement(EmptyState, { text: "\u00DCstteki men\u00FCden bir \u00F6\u011Fretmen se\u00E7in." })),
             tab === "ogretmen-hakedis" && (activeTeacherId
                 ? React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts, onlyTeacherId: activeTeacherId })
@@ -973,7 +973,7 @@ function Row({ label, value }) { return React.createElement("div", { className: 
     React.createElement("span", { style: { color: C.inkSoft } }, label),
     React.createElement("span", { className: "font-medium" }, value)); }
 /* ---------------- Ders Takvimi & Yoklama ---------------- */
-function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId, canMarkPas }) {
+function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId, canMarkPas, payouts, setPayouts }) {
     const [weekKey, setWeekKey] = useState(currentWeekKey());
     const [telafiFor, setTelafiFor] = useState(null);
     const [telafiDate, setTelafiDate] = useState("");
@@ -991,6 +991,18 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
         return true;
     });
     weekLessons = weekLessons.slice().sort((a, b) => a.date.localeCompare(b.date));
+    // Bir dersin durumu değiştiğinde, ait olduğu hafta zaten "Ödendi" olarak
+    // işaretlenmişse o hafta otomatik "ödenmedi"ye çevrilir; böylece kurucu/müdür
+    // tutarı yeniden hesaplayıp doğru haliyle tekrar onaylamak zorunda kalır.
+    // Bu sayede mazeretli işaretlenen bir günün ücreti, o hafta zaten ödendiyse
+    // bile kalıcı olarak "unutulmuş" şekilde tekrar ödenemez.
+    function resetPayoutIfPaid(teacherId, wKey) {
+        if (!payouts || !setPayouts)
+            return;
+        const rec = payouts.find(p => p.teacherId === teacherId && p.weekKey === wKey && p.paid);
+        if (rec)
+            setPayouts(payouts.map(p => p === rec ? Object.assign(Object.assign({}, p), { paid: false }) : p));
+    }
     function setStatus(lessonId, status) {
         if (status === "pas" && !canMarkPas) {
             setShowPasWarning(true);
@@ -1003,6 +1015,9 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
             setTelafiDate("");
             return;
         }
+        const lesson = lessons.find(l => l.id === lessonId);
+        if (lesson)
+            resetPayoutIfPaid(lesson.teacherId, lesson.isTelafi ? weekKeyOf(fromISODate(lesson.date)) : lesson.weekKey);
         setLessons(lessons.map(l => l.id === lessonId ? Object.assign(Object.assign({}, l), { status }) : l));
     }
     const telafiWeekStart = telafiWeekKey;
@@ -1019,6 +1034,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
         const orig = lessons.find(l => l.id === telafiFor);
         if (!orig)
             return;
+        resetPayoutIfPaid(orig.teacherId, orig.isTelafi ? weekKeyOf(fromISODate(orig.date)) : orig.weekKey);
         const updated = lessons.map(l => l.id === telafiFor ? Object.assign(Object.assign({}, l), { status: "mazeretli" }) : l);
         updated.push({ id: uid("ders"), studentId: orig.studentId, teacherId: orig.teacherId, date: telafiDate, weekKey: weekKeyOf(fromISODate(telafiDate)), status: "bekliyor", isTelafi: true, linkedTo: orig.id, telafiForDate: orig.date });
         setLessons(updated);
@@ -1065,7 +1081,10 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                             React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(l.id, "mazeretli") }, "Mazeretli"),
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(l.id, "mazeretsiz") }, "Mazeretsiz"),
                             React.createElement("button", { style: btnStyle("warning"), onClick: () => setStatus(l.id, "pas") }, "Pas"),
-                            React.createElement(WaButton, { phone: st.phone, label: "Hat\u0131rlat", message: "Merhaba, " + st.name + " adl\u0131 \u00F6\u011Frencimizin " + fmtDateTR(l.date) + " tarihli dersini hat\u0131rlatmak isteriz." }))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => setLessons(lessons.map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x)) }, "Geri Al")))));
+                            React.createElement(WaButton, { phone: st.phone, label: "Hat\u0131rlat", message: "Merhaba, " + st.name + " adl\u0131 \u00F6\u011Frencimizin " + fmtDateTR(l.date) + " tarihli dersini hat\u0131rlatmak isteriz." }))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => {
+                                resetPayoutIfPaid(l.teacherId, l.isTelafi ? weekKeyOf(fromISODate(l.date)) : l.weekKey);
+                                setLessons(lessons.map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x));
+                            } }, "Geri Al")))));
                 }))))),
         telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => { setTelafiFor(null); setTelafiWeekKey(null); } },
             React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "\u00D6\u011Frenci \u00F6nceden haber verdi\u011Fi i\u00E7in bu dersin hakk\u0131 yanmayacak. Telafi dersi i\u00E7in, dersin ait oldu\u011Fu haftan\u0131n (" + (telafiWeekKey ? weekRangeLabel(telafiWeekKey) : "") + ") i\u00E7inden bir g\u00FCn se\u00E7in."),
