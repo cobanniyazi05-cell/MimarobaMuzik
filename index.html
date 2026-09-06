@@ -107,6 +107,7 @@ const ENSTRUMANLAR = ["Piyano", "Gitar", "Bateri", "Keman", "Bas Gitar", "Yan Fl
 function pad(n) { return n < 10 ? "0" + n : "" + n; }
 function toISODate(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
 function fromISODate(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+function addDays(iso, n) { const d = fromISODate(iso); d.setDate(d.getDate() + n); return toISODate(d); }
 function fmtTL(n) { return (Math.round(n || 0)).toLocaleString("tr-TR") + " ₺"; }
 function fmtDateTR(iso) { const d = fromISODate(iso); return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear(); }
 function getMonday(d) {
@@ -166,6 +167,16 @@ function WaButton({ phone, message, label, kind }) {
     if (!link)
         return React.createElement("span", { className: "text-xs", style: { color: C.inkSoft } }, "Telefon yok");
     return React.createElement("a", { href: link, target: "_blank", rel: "noopener noreferrer", style: Object.assign(Object.assign({}, btnStyle(kind || "success")), { textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }) }, label || "WhatsApp'ta G\u00F6nder");
+}
+// Aidat / ders bor\u00E7 hat\u0131rlatma mesaj\u0131. Bor\u00E7 varsa (credit < 0) ka\u00E7 ders
+// bor\u00E7lu oldu\u011Funu ve yeni ay\u0131n aidat\u0131yla birlikte \u00F6denmesi gerekti\u011Fini belirtir.
+function aidatHatirlatMsg(studentName, credit) {
+    const intro = "Merhaba, Mimaroba M\u00FCzik Kursu mesaj\u0131d\u0131r. " + studentName + " adl\u0131 \u00F6\u011Frencimizin ";
+    const outro = " Mutlu ve m\u00FCzikli g\u00FCnler dileriz.";
+    if (credit < 0) {
+        return intro + Math.abs(credit) + " ders bor\u00E7lu bulunmaktad\u0131r. Yeni ay\u0131n aidat\u0131 ile birlikte, \u00F6demesi yap\u0131lmam\u0131\u015F derslerin \u00FCcretinin de \u00F6denmesini rica ederiz." + outro;
+    }
+    return intro + "ders hakk\u0131 " + (credit === 0 ? "bitmi\u015Ftir" : "azalm\u0131\u015Ft\u0131r") + ". Yeni ay\u0131n aidat\u0131n\u0131n \u00F6denmesini rica ederiz." + outro;
 }
 const UCRET_BIREYSEL = 5400;
 const UCRET_BIREYSEL_CIFT = 10800; // haftada 2 gün (8 ders) alan öğrenciler için
@@ -689,7 +700,7 @@ function PanelTab({ staff, students, lessons, payments, studentCredit }) {
                         React.createElement(Pill, { tone: "danger" },
                             Math.abs(studentCredit(s.id)),
                             " ders bor\u00E7lu"),
-                        React.createElement(WaButton, { phone: s.phone, label: "Hat\u0131rlat", message: "Merhaba, " + s.name + " adl\u0131 \u00F6\u011Frencimizin ders hakk\u0131 bitti. Aidat yenileme zaman\u0131 gelmi\u015Ftir." })))))))))));
+                        React.createElement(WaButton, { phone: s.phone, label: "Hat\u0131rlat", message: aidatHatirlatMsg(s.name, studentCredit(s.id)) })))))))))));
 }
 function StatCard({ label, value, tone }) {
     const color = tone === "danger" ? C.danger : tone === "success" ? C.success : C.ink;
@@ -858,7 +869,7 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                             " ders hakk\u0131")),
                         React.createElement(Td, { className: "text-right whitespace-nowrap" },
                             React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("ghost")), { marginRight: 4 }), onClick: () => openEdit(s) }, "D\u00FCzenle"),
-                            credit <= 1 && React.createElement(WaButton, { phone: s.phone, label: "Aidat Hat\u0131rlat", message: "Merhaba, " + s.name + " adl\u0131 \u00F6\u011Frencimizin ders hakk\u0131 " + (credit <= 0 ? "bitti" : "azald\u0131") + ". Aidat yenileme zaman\u0131 gelmi\u015Ftir." }),
+                            credit <= 1 && React.createElement(WaButton, { phone: s.phone, label: "Aidat Hat\u0131rlat", message: aidatHatirlatMsg(s.name, credit) }),
                             s.status === "aktif" && React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("danger")), { marginRight: 4 }), onClick: () => markLeft(s.id) }, "Ayr\u0131ld\u0131"),
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => removeStudent(s.id) }, "Sil"))));
                 }))))),
@@ -978,6 +989,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     const [telafiFor, setTelafiFor] = useState(null);
     const [telafiDate, setTelafiDate] = useState("");
     const [telafiWeekKey, setTelafiWeekKey] = useState(null);
+    const [telafiOrigDate, setTelafiOrigDate] = useState(null);
     const [showPasWarning, setShowPasWarning] = useState(false);
     useEffect(() => { ensureWeekLessons(weekKey); /* eslint-disable-next-line */ }, [weekKey]);
     let weekLessons = lessons.filter(l => l.weekKey === weekKey || (l.isTelafi && l.date && weekKeyOf(fromISODate(l.date)) === weekKey));
@@ -1012,6 +1024,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
             const orig = lessons.find(l => l.id === lessonId);
             setTelafiFor(lessonId);
             setTelafiWeekKey(orig ? weekKeyOf(fromISODate(orig.date)) : weekKey);
+            setTelafiOrigDate(orig ? orig.date : null);
             setTelafiDate("");
             return;
         }
@@ -1020,15 +1033,36 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
             resetPayoutIfPaid(lesson.teacherId, lesson.isTelafi ? weekKeyOf(fromISODate(lesson.date)) : lesson.weekKey);
         setLessons(lessons.map(l => l.id === lessonId ? Object.assign(Object.assign({}, l), { status }) : l));
     }
-    const telafiWeekStart = telafiWeekKey;
+    // Bir dersi "Bekliyor"a geri almak: eğer geri alınan ders "Mazeretli" ise,
+    // o ders için önceden planlanmış telafi ders(ler)i de otomatik olarak iptal
+    // edilip silinir. Aksi halde aynı derse tekrar tekrar "Mazeretli" işlemi
+    // yapıldığında mükerrer telafi günleri ve mükerrer hakediş oluşuyordu.
+    function undoStatus(l) {
+        const linked = l.status === "mazeretli" ? lessons.filter(x => x.linkedTo === l.id) : [];
+        const weeksToReset = new Set();
+        weeksToReset.add(l.teacherId + "|" + (l.isTelafi ? weekKeyOf(fromISODate(l.date)) : l.weekKey));
+        linked.forEach(t => weeksToReset.add(t.teacherId + "|" + weekKeyOf(fromISODate(t.date))));
+        weeksToReset.forEach(key => {
+            const idx = key.lastIndexOf("|");
+            resetPayoutIfPaid(key.slice(0, idx), key.slice(idx + 1));
+        });
+        const linkedIds = new Set(linked.map(t => t.id));
+        const next = lessons.filter(x => !linkedIds.has(x.id)).map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x);
+        setLessons(next);
+    }
     const telafiWeekEnd = telafiWeekKey ? (() => { const d = fromISODate(telafiWeekKey); d.setDate(d.getDate() + 6); return toISODate(d); })() : null;
+    const telafiMinDate = telafiOrigDate ? addDays(telafiOrigDate, 1) : telafiWeekKey;
     function confirmMazeret() {
         if (!telafiDate) {
             alert("Telafi ders günü seçin.");
             return;
         }
-        if (telafiWeekKey && (telafiDate < telafiWeekStart || telafiDate > telafiWeekEnd)) {
-            alert("Telafi tarihi, sadece dersin ait olduğu haftanın günleri (" + weekRangeLabel(telafiWeekKey) + ") arasından seçilebilir.");
+        if (telafiOrigDate && telafiDate <= telafiOrigDate) {
+            alert("Telafi tarihi, mazeret belirtilen g\u00FCn\u00FCn kendisi ya da \u00F6ncesi olamaz.");
+            return;
+        }
+        if (telafiWeekKey && (telafiDate < telafiMinDate || telafiDate > telafiWeekEnd)) {
+            alert("Telafi tarihi, sadece mazeret belirtilen g\u00FCnden sonra, o haftan\u0131n kalan g\u00FCnleri (" + weekRangeLabel(telafiWeekKey) + ") aras\u0131ndan se\u00E7ilebilir.");
             return;
         }
         const orig = lessons.find(l => l.id === telafiFor);
@@ -1040,6 +1074,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
         setLessons(updated);
         setTelafiFor(null);
         setTelafiWeekKey(null);
+        setTelafiOrigDate(null);
     }
     const statusMeta = {
         bekliyor: { label: "Bekliyor", tone: "neutral" }, yapildi: { label: "Yapıldı", tone: "success" },
@@ -1081,17 +1116,14 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                             React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(l.id, "mazeretli") }, "Mazeretli"),
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(l.id, "mazeretsiz") }, "Mazeretsiz"),
                             React.createElement("button", { style: btnStyle("warning"), onClick: () => setStatus(l.id, "pas") }, "Pas"),
-                            React.createElement(WaButton, { phone: st.phone, label: "Hat\u0131rlat", message: "Merhaba, " + st.name + " adl\u0131 \u00F6\u011Frencimizin " + fmtDateTR(l.date) + " tarihli dersini hat\u0131rlatmak isteriz." }))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => {
-                                resetPayoutIfPaid(l.teacherId, l.isTelafi ? weekKeyOf(fromISODate(l.date)) : l.weekKey);
-                                setLessons(lessons.map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x));
-                            } }, "Geri Al")))));
+                            React.createElement(WaButton, { phone: st.phone, label: "Hat\u0131rlat", message: "Merhaba, Mimaroba M\u00FCzik Kursu mesaj\u0131d\u0131r. " + st.name + " adl\u0131 \u00F6\u011Frencimizin " + fmtDateTR(l.date) + " tarihli dersini hat\u0131rlatmak isteriz. Mutlu ve m\u00FCzikli g\u00FCnler dileriz." }))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => undoStatus(l) }, "Geri Al")))));
                 }))))),
-        telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => { setTelafiFor(null); setTelafiWeekKey(null); } },
-            React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "\u00D6\u011Frenci \u00F6nceden haber verdi\u011Fi i\u00E7in bu dersin hakk\u0131 yanmayacak. Telafi dersi i\u00E7in, dersin ait oldu\u011Fu haftan\u0131n (" + (telafiWeekKey ? weekRangeLabel(telafiWeekKey) : "") + ") i\u00E7inden bir g\u00FCn se\u00E7in."),
+        telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => { setTelafiFor(null); setTelafiWeekKey(null); setTelafiOrigDate(null); } },
+            React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "\u00D6\u011Frenci \u00F6nceden haber verdi\u011Fi i\u00E7in bu dersin hakk\u0131 yanmayacak. Telafi dersi i\u00E7in, mazeret belirtilen g\u00FCnden sonra, o haftan\u0131n (" + (telafiWeekKey ? weekRangeLabel(telafiWeekKey) : "") + ") kalan g\u00FCnlerinden birini se\u00E7in."),
             React.createElement("label", { style: labelStyle }, "Telafi Tarihi"),
-            React.createElement("input", { style: inputStyle, type: "date", value: telafiDate, min: telafiWeekStart, max: telafiWeekEnd, onChange: e => setTelafiDate(e.target.value) }),
+            React.createElement("input", { style: inputStyle, type: "date", value: telafiDate, min: telafiMinDate, max: telafiWeekEnd, onChange: e => setTelafiDate(e.target.value) }),
             React.createElement("div", { className: "flex justify-end gap-2 pt-4" },
-                React.createElement("button", { style: btnStyle("ghost"), onClick: () => { setTelafiFor(null); setTelafiWeekKey(null); } }, "Vazge\u00E7"),
+                React.createElement("button", { style: btnStyle("ghost"), onClick: () => { setTelafiFor(null); setTelafiWeekKey(null); setTelafiOrigDate(null); } }, "Vazge\u00E7"),
                 React.createElement("button", { style: btnStyle("primary"), onClick: confirmMazeret }, "Kaydet")))),
         showPasWarning && (React.createElement(Modal, { title: "Yetki Uyar\u0131s\u0131", onClose: () => setShowPasWarning(false) },
             React.createElement("p", { className: "text-sm font-semibold", style: { color: C.danger } }, "Bu yetki sadece m\u00FCd\u00FCre aittir, M\u00FCd\u00FCr ile ileti\u015Fime ge\u00E7iniz"),
