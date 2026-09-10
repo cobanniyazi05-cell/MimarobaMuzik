@@ -53,6 +53,28 @@
     .md\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr));}
     .sm\:inline{display:inline;}
   }
+
+  /* --- Panel: gösterişli karşılama alanı --- */
+  @keyframes panelFloat{ 0%,100%{ transform: translateY(0) rotate(var(--r,0deg)); } 50%{ transform: translateY(-8px) rotate(var(--r,0deg)); } }
+  @keyframes panelFadeUp{ from{ opacity:0; transform: translateY(10px); } to{ opacity:1; transform: translateY(0); } }
+  .hero-panel{ position:relative; overflow:hidden; border-radius:20px; padding:28px 24px;
+    background: radial-gradient(120% 160% at 0% 0%, #5A4B85 0%, #453A67 45%, #332B4B 100%);
+    color:#fff; box-shadow: 0 10px 30px -10px rgba(43,36,56,0.45); margin-bottom:24px; }
+  .hero-panel::before{ content:""; position:absolute; inset:0; opacity:0.10; pointer-events:none;
+    background-image: radial-gradient(circle, #C79A2B 1.5px, transparent 1.5px);
+    background-size: 22px 22px; }
+  .hero-note{ position:absolute; font-size:46px; opacity:0.16; animation: panelFloat 6s ease-in-out infinite; pointer-events:none; }
+  .hero-instruments{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .hero-instrument-chip{ display:inline-flex; align-items:center; gap:7px; background:rgba(255,255,255,0.10);
+    border:1px solid rgba(255,255,255,0.20); border-radius:999px; padding:6px 12px 6px 8px; font-size:13px; font-weight:600;
+    backdrop-filter: blur(2px); animation: panelFadeUp 0.5s ease both; }
+  .hero-instrument-chip .emoji{ font-size:18px; }
+  .stat-card{ position:relative; overflow:hidden; transition: transform 0.15s ease, box-shadow 0.15s ease; animation: panelFadeUp 0.4s ease both; }
+  .stat-card:hover{ transform: translateY(-3px); box-shadow: 0 12px 20px -12px rgba(43,36,56,0.28); }
+  .stat-icon-badge{ position:absolute; top:12px; right:12px; width:40px; height:40px; border-radius:12px;
+    display:flex; align-items:center; justify-content:center; font-size:20px; }
+  .panel-section-card{ transition: box-shadow 0.15s ease; }
+  .panel-section-card:hover{ box-shadow: 0 12px 24px -14px rgba(43,36,56,0.25); }
 </style>
 </head>
 <body>
@@ -110,6 +132,12 @@ function fromISODate(s) { const [y, m, d] = s.split("-").map(Number); return new
 function addDays(iso, n) { const d = fromISODate(iso); d.setDate(d.getDate() + n); return toISODate(d); }
 function fmtTL(n) { return (Math.round(n || 0)).toLocaleString("tr-TR") + " ₺"; }
 function fmtDateTR(iso) { const d = fromISODate(iso); return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear(); }
+// Bir ders kaydının, öğrencinin "ayrıldığı" tarihten itibaren gizlenmesi/iptal
+// sayılması gerekip gerekmediğini tek bir yerden karar verir. Böylece takvim,
+// panel istatistiği vb. tüm ekranlar aynı kurala göre davranır.
+function isDepartedLesson(lesson, student) {
+    return !!(student && student.status === "ayrildi" && student.leftDate && lesson.date >= student.leftDate);
+}
 function getMonday(d) {
     const date = new Date(d);
     const day = date.getDay();
@@ -667,34 +695,52 @@ function App() {
         React.createElement("footer", { className: "text-center text-xs py-8", style: { color: C.inkSoft } }, "Veriler ger\u00E7ek zamanl\u0131 olarak ortak veritaban\u0131nda saklan\u0131r \u2014 t\u00FCm cihazlarda an\u0131nda senkronize olur.")));
 }
 /* ---------------- Panel ---------------- */
+const ENSTRUMAN_EMOJI = ["\uD83C\uDFB9", "\uD83C\uDFB8", "\uD83E\uDD41", "\uD83C\uDFBB", "\uD83C\uDFB7", "\uD83C\uDFA4", "\uD83C\uDFBA", "\uD83E\uDE95"]; // piyano, gitar, davul, keman, saksafon, vokal, trompet, bağlama-benzeri
+const GUN_TR = ["Pazartesi", "Sal\u0131", "\u00C7ar\u015Famba", "Per\u015Fembe", "Cuma", "Cumartesi", "Pazar"];
 function PanelTab({ staff, students, lessons, payments, studentCredit }) {
     const aktifOgrenci = students.filter(s => s.status === "aktif");
-    const borcluSayisi = aktifOgrenci.filter(s => studentCredit(s.id) < 0).length;
+    const borcluOgrenciler = aktifOgrenci.filter(s => studentCredit(s.id) < 0);
+    const borcluSayisi = borcluOgrenciler.length;
     const bugun = toISODate(new Date());
-    const bugunkuDersler = lessons.filter(l => l.date === bugun);
+    const bugunkuDersler = lessons.filter(l => l.date === bugun && !isDepartedLesson(l, students.find(s => s.id === l.studentId)));
     const thisWeek = currentWeekKey();
     const buHaftaGelir = payments.filter(p => weekKeyOf(fromISODate(p.date)) === thisWeek).reduce((a, p) => a + p.amount, 0);
     const thisMonth = monthKeyOf(bugun);
     const buAyGelir = payments.filter(p => monthKeyOf(p.date) === thisMonth).reduce((a, p) => a + p.amount, 0);
+    const bugunGunAdi = GUN_TR[(new Date().getDay() + 6) % 7];
     return (React.createElement("div", null,
-        React.createElement(SectionTitle, { eyebrow: "Genel Bak\u0131\u015F", title: "Panel" }),
+        React.createElement("div", { className: "hero-panel" },
+            React.createElement("span", { className: "hero-note", style: { top: 6, left: "8%", "--r": "-8deg" } }, "\u266A"),
+            React.createElement("span", { className: "hero-note", style: { top: 40, left: "42%", "--r": "6deg", animationDelay: "1.2s" } }, "\u266B"),
+            React.createElement("span", { className: "hero-note", style: { top: -6, right: "6%", "--r": "10deg", animationDelay: "2.1s" } }, "\uD834\uDD1E"),
+            React.createElement("div", { style: { position: "relative" } },
+                React.createElement("div", { className: "text-xs font-semibold uppercase", style: { color: C.accent, letterSpacing: "0.08em" } }, "Ho\u015F geldiniz"),
+                React.createElement("h2", { className: "text-3xl mt-1", style: Object.assign(Object.assign({}, displayFont), { color: "#fff" }) }, "Mimaroba M\u00FCzik Kursu"),
+                React.createElement("p", { className: "text-sm mt-1", style: { color: "rgba(255,255,255,0.75)" } },
+                    "Bug\u00FCn ", bugunGunAdi, " \u2014 ", fmtDateTR(bugun), " \u00B7 ", bugunkuDersler.length, " ders bug\u00FCn planlanm\u0131\u015F."),
+                React.createElement("div", { className: "hero-instruments" }, ENSTRUMAN_EMOJI.map((e, i) => (React.createElement("span", { key: i, className: "hero-instrument-chip", style: { animationDelay: (i * 0.06) + "s" } },
+                    React.createElement("span", { className: "emoji" }, e),
+                    ENSTRUMANLAR[i] || ""))))),
+        ),
         React.createElement("div", { className: "grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" },
-            React.createElement(StatCard, { label: "Aktif \u00D6\u011Frenci", value: aktifOgrenci.length }),
-            React.createElement(StatCard, { label: "\u00D6\u011Fretmen Say\u0131s\u0131", value: staff.filter(s => s.role === "ogretmen").length }),
-            React.createElement(StatCard, { label: "Bor\u00E7lu \u00D6\u011Frenci", value: borcluSayisi, tone: borcluSayisi > 0 ? "danger" : "success" }),
-            React.createElement(StatCard, { label: "Bug\u00FCnk\u00FC Ders", value: bugunkuDersler.length })),
+            React.createElement(StatCard, { label: "Aktif \u00D6\u011Frenci", value: aktifOgrenci.length, icon: "\uD83C\uDFAD", tone: "primary" }),
+            React.createElement(StatCard, { label: "\u00D6\u011Fretmen Say\u0131s\u0131", value: staff.filter(s => s.role === "ogretmen").length, icon: "\uD83C\uDF93", tone: "accent" }),
+            React.createElement(StatCard, { label: "Bor\u00E7lu \u00D6\u011Frenci", value: borcluSayisi, icon: "\u26A0\uFE0F", tone: borcluSayisi > 0 ? "danger" : "success" }),
+            React.createElement(StatCard, { label: "Bug\u00FCnk\u00FC Ders", value: bugunkuDersler.length, icon: "\uD83C\uDFB6", tone: "primary" })),
         React.createElement("div", { className: "grid md:grid-cols-2 gap-4" },
-            React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
-                React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Bu haftan\u0131n tahsilat\u0131"),
+            React.createElement("div", { className: "panel-section-card", style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
+                React.createElement("h3", { className: "text-lg mb-2 flex items-center gap-2", style: displayFont },
+                    React.createElement("span", null, "\uD83D\uDCB0"), " Bu haftan\u0131n tahsilat\u0131"),
                 React.createElement("div", { className: "text-2xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buHaftaGelir)),
                 React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, weekRangeLabel(thisWeek)),
                 React.createElement("div", { className: "mt-3 pt-3", style: { borderTop: "1px solid " + C.line } },
                     React.createElement("h3", { className: "text-sm mb-1", style: { color: C.inkSoft } }, "Bu ay\u0131n toplam tahsilat\u0131"),
                     React.createElement("div", { className: "text-xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buAyGelir)),
                     React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, monthLabel(thisMonth)))),
-            React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
-                React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Bor\u00E7lu \u00F6\u011Frenciler"),
-                borcluSayisi === 0 ? React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, "\u015Eu anda bor\u00E7lu \u00F6\u011Frenci yok.") : (React.createElement("ul", { className: "text-sm space-y-2" }, aktifOgrenci.filter(s => studentCredit(s.id) < 0).slice(0, 6).map(s => (React.createElement("li", { key: s.id, className: "flex justify-between items-center gap-2" },
+            React.createElement("div", { className: "panel-section-card", style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
+                React.createElement("h3", { className: "text-lg mb-2 flex items-center gap-2", style: displayFont },
+                    React.createElement("span", null, "\u2757"), " Bor\u00E7lu \u00F6\u011Frenciler"),
+                borcluSayisi === 0 ? React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, "\u015Eu anda bor\u00E7lu \u00F6\u011Frenci yok. \uD83C\uDF89") : (React.createElement("ul", { className: "text-sm space-y-2" }, borcluOgrenciler.slice(0, 6).map(s => (React.createElement("li", { key: s.id, className: "flex justify-between items-center gap-2" },
                     React.createElement("span", null, s.name),
                     React.createElement("div", { className: "flex items-center gap-2" },
                         React.createElement(Pill, { tone: "danger" },
@@ -702,10 +748,12 @@ function PanelTab({ staff, students, lessons, payments, studentCredit }) {
                             " ders bor\u00E7lu"),
                         React.createElement(WaButton, { phone: s.phone, label: "Hat\u0131rlat", message: aidatHatirlatMsg(s.name, studentCredit(s.id)) })))))))))));
 }
-function StatCard({ label, value, tone }) {
-    const color = tone === "danger" ? C.danger : tone === "success" ? C.success : C.ink;
-    return (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
-        React.createElement("div", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, label),
+function StatCard({ label, value, tone, icon }) {
+    const color = tone === "danger" ? C.danger : tone === "success" ? C.success : tone === "accent" ? "#8a6a12" : C.primary;
+    const badgeBg = tone === "danger" ? C.dangerBg : tone === "success" ? C.successBg : tone === "accent" ? C.accentSoft : "#EAE7F5";
+    return (React.createElement("div", { className: "stat-card", style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
+        icon && React.createElement("div", { className: "stat-icon-badge", style: { background: badgeBg } }, icon),
+        React.createElement("div", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft, maxWidth: "70%" } }, label),
         React.createElement("div", { className: "text-3xl mt-1", style: Object.assign(Object.assign({}, displayFont), { color }) }, value)));
 }
 /* ---------------- Personel ---------------- */
@@ -790,7 +838,7 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
         name: "", parentName: "", phone: "", address: "",
         instrument: ENSTRUMANLAR[0], courseType: "bireysel",
         teacherId: "", fee: UCRET_BIREYSEL, registerDate: toISODate(new Date()),
-        weeklyDayIndex: 0, weeklyDayIndex2: "", status: "aktif", creditAdjustment: 0,
+        weeklyDayIndex: 0, weeklyDayIndex2: "", status: "aktif", leftDate: "", creditAdjustment: 0,
     });
     const [form, setForm] = useState(blank());
     const [editing, setEditing] = useState(null);
@@ -800,7 +848,22 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
         if (!form.name.trim() || !form.teacherId)
             return;
         if (editing) {
-            setStudents(students.map(s => s.id === editing ? Object.assign(Object.assign({}, form), { id: editing, fee: Number(form.fee), creditAdjustment: Number(form.creditAdjustment) || 0 }) : s));
+            // Durum "ayrıldı" ise ama tarih girilmemişse bugünü kullan; "aktif"e
+            // dönülürse ayrılma tarihi temizlenir ki öğrenci yeniden ders alabilsin.
+            const normalized = Object.assign({}, form, {
+                id: editing, fee: Number(form.fee), creditAdjustment: Number(form.creditAdjustment) || 0,
+                leftDate: form.status === "ayrildi" ? (form.leftDate || toISODate(new Date())) : "",
+            });
+            setStudents(students.map(s => s.id === editing ? normalized : s));
+            // Ayrılma tarihi bu ekrandan geriye doğru düzeltilmiş olabilir (örn.
+            // öğrenci aslında geçen hafta ayrıldığı halde "Ayrıldı" butonuna bugün
+            // basılmıştı). Bu durumda, düzeltilen tarihten itibaren zaten
+            // tanımlanmış olan ders takvimi kayıtları da temizlenir.
+            if (setLessons) {
+                if (normalized.status === "ayrildi") {
+                    setLessons(lessons.filter(l => !(l.studentId === editing && l.date >= normalized.leftDate)));
+                }
+            }
         }
         else {
             const newStudent = Object.assign(Object.assign({}, form), { id: uid("ogr"), fee: Number(form.fee), creditAdjustment: Number(form.creditAdjustment) || 0 });
@@ -941,6 +1004,15 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                         fmtTL(UCRET_GRUP),
                         " \u2014 4 ders hakk\u0131.")),
                 editing && React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Durum"),
+                    React.createElement("select", { style: inputStyle, value: form.status, onChange: e => setForm(Object.assign(Object.assign({}, form), { status: e.target.value })) },
+                        React.createElement("option", { value: "aktif" }, "Aktif"),
+                        React.createElement("option", { value: "ayrildi" }, "Ayr\u0131ld\u0131"))),
+                editing && form.status === "ayrildi" && React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Ayr\u0131lma Tarihi"),
+                    React.createElement("input", { style: inputStyle, type: "date", value: form.leftDate || toISODate(new Date()), onChange: e => setForm(Object.assign(Object.assign({}, form), { leftDate: e.target.value })) }),
+                    React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, "Bu tarihten itibaren (bu tarih dahil) ders takviminde bu \u00F6\u011Frenci i\u00E7in ders tan\u0131mlanmaz. Ger\u00E7ek ayr\u0131l\u0131\u015F g\u00FCn\u00FCnden daha ge\u00E7 bir tarih se\u00E7ilmi\u015Fse, o araya denk gelen tan\u0131ml\u0131 dersleri temizlemek i\u00E7in tarihi buradan d\u00FCzeltip kaydedin.")),
+                editing && React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Ders Hakk\u0131 Manuel D\u00FCzeltme (+/-)"),
                     React.createElement("input", { style: inputStyle, type: "number", value: form.creditAdjustment, onChange: e => setForm(Object.assign(Object.assign({}, form), { creditAdjustment: e.target.value })) }),
                     React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, "Ders takvimindeki kay\u0131tlarla ger\u00E7ek durum uyu\u015Fmuyorsa, ders hakk\u0131n\u0131 buradan elle d\u00FCzeltebilirsiniz. \u00D6rn: eksik g\u00F6r\u00FCn\u00FCyorsa pozitif, fazla g\u00F6r\u00FCn\u00FCyorsa negatif say\u0131 girin."))),
@@ -996,12 +1068,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     if (onlyTeacherId)
         weekLessons = weekLessons.filter(l => l.teacherId === onlyTeacherId);
     // Ayrılan öğrencinin, ayrıldığı tarihten itibaren dersleri takvimde gösterilmez
-    weekLessons = weekLessons.filter(l => {
-        const st = studentById(l.studentId);
-        if (st && st.status === "ayrildi" && st.leftDate && l.date >= st.leftDate)
-            return false;
-        return true;
-    });
+    weekLessons = weekLessons.filter(l => !isDepartedLesson(l, studentById(l.studentId)));
     weekLessons = weekLessons.slice().sort((a, b) => a.date.localeCompare(b.date));
     // Bir dersin durumu değiştiğinde, ait olduğu hafta zaten "Ödendi" olarak
     // işaretlenmişse o hafta otomatik "ödenmedi"ye çevrilir; böylece kurucu/müdür
