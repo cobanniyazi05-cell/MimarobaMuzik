@@ -54,27 +54,6 @@
     .sm\:inline{display:inline;}
   }
 
-  /* --- Panel: gösterişli karşılama alanı --- */
-  @keyframes panelFloat{ 0%,100%{ transform: translateY(0) rotate(var(--r,0deg)); } 50%{ transform: translateY(-8px) rotate(var(--r,0deg)); } }
-  @keyframes panelFadeUp{ from{ opacity:0; transform: translateY(10px); } to{ opacity:1; transform: translateY(0); } }
-  .hero-panel{ position:relative; overflow:hidden; border-radius:20px; padding:28px 24px;
-    background: radial-gradient(120% 160% at 0% 0%, #5A4B85 0%, #453A67 45%, #332B4B 100%);
-    color:#fff; box-shadow: 0 10px 30px -10px rgba(43,36,56,0.45); margin-bottom:24px; }
-  .hero-panel::before{ content:""; position:absolute; inset:0; opacity:0.10; pointer-events:none;
-    background-image: radial-gradient(circle, #C79A2B 1.5px, transparent 1.5px);
-    background-size: 22px 22px; }
-  .hero-note{ position:absolute; font-size:46px; opacity:0.16; animation: panelFloat 6s ease-in-out infinite; pointer-events:none; }
-  .hero-instruments{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
-  .hero-instrument-chip{ display:inline-flex; align-items:center; gap:7px; background:rgba(255,255,255,0.10);
-    border:1px solid rgba(255,255,255,0.20); border-radius:999px; padding:6px 12px 6px 8px; font-size:13px; font-weight:600;
-    backdrop-filter: blur(2px); animation: panelFadeUp 0.5s ease both; }
-  .hero-instrument-chip .emoji{ font-size:18px; }
-  .stat-card{ position:relative; overflow:hidden; transition: transform 0.15s ease, box-shadow 0.15s ease; animation: panelFadeUp 0.4s ease both; }
-  .stat-card:hover{ transform: translateY(-3px); box-shadow: 0 12px 20px -12px rgba(43,36,56,0.28); }
-  .stat-icon-badge{ position:absolute; top:12px; right:12px; width:40px; height:40px; border-radius:12px;
-    display:flex; align-items:center; justify-content:center; font-size:20px; }
-  .panel-section-card{ transition: box-shadow 0.15s ease; }
-  .panel-section-card:hover{ box-shadow: 0 12px 24px -14px rgba(43,36,56,0.25); }
 </style>
 </head>
 <body>
@@ -678,7 +657,7 @@ function App() {
                 }, onClose: () => setShowChangeAdminPasscode(false) })),
             React.createElement("div", { className: "max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto pb-2" }, tabs.map(x => (React.createElement("button", { key: x.k, onClick: () => setTab(x.k), className: "text-sm whitespace-nowrap px-3 py-1.5", style: { borderRadius: "8px 8px 0 0", background: tab === x.k ? C.bg : "transparent", color: tab === x.k ? C.primary : "rgba(255,255,255,0.85)", fontWeight: tab === x.k ? 700 : 500, border: "none", cursor: "pointer" } }, x.t))))),
         React.createElement("main", { className: "max-w-6xl mx-auto px-4 py-6" },
-            tab === "panel" && React.createElement(PanelTab, { staff, students, lessons, payments, studentCredit }),
+            tab === "panel" && React.createElement(PanelTab, { staff, students, lessons, payments, studentCredit, setStudents }),
             tab === "personel" && React.createElement(PersonelTab, { staff, setStaff, students }),
             tab === "ogrenciler" && React.createElement(OgrencilerTab, { students, setStudents, teachers, payments, setPayments, studentCredit, lessons, setLessons }),
             tab === "dersler" && React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, canMarkPas: true, payouts, setPayouts }),
@@ -695,9 +674,8 @@ function App() {
         React.createElement("footer", { className: "text-center text-xs py-8", style: { color: C.inkSoft } }, "Veriler ger\u00E7ek zamanl\u0131 olarak ortak veritaban\u0131nda saklan\u0131r \u2014 t\u00FCm cihazlarda an\u0131nda senkronize olur.")));
 }
 /* ---------------- Panel ---------------- */
-const ENSTRUMAN_EMOJI = ["\uD83C\uDFB9", "\uD83C\uDFB8", "\uD83E\uDD41", "\uD83C\uDFBB", "\uD83C\uDFB7", "\uD83C\uDFA4", "\uD83C\uDFBA", "\uD83E\uDE95"]; // piyano, gitar, davul, keman, saksafon, vokal, trompet, bağlama-benzeri
 const GUN_TR = ["Pazartesi", "Sal\u0131", "\u00C7ar\u015Famba", "Per\u015Fembe", "Cuma", "Cumartesi", "Pazar"];
-function PanelTab({ staff, students, lessons, payments, studentCredit }) {
+function PanelTab({ staff, students, lessons, payments, studentCredit, setStudents }) {
     const aktifOgrenci = students.filter(s => s.status === "aktif");
     const borcluOgrenciler = aktifOgrenci.filter(s => studentCredit(s.id) < 0);
     const borcluSayisi = borcluOgrenciler.length;
@@ -708,52 +686,84 @@ function PanelTab({ staff, students, lessons, payments, studentCredit }) {
     const thisMonth = monthKeyOf(bugun);
     const buAyGelir = payments.filter(p => monthKeyOf(p.date) === thisMonth).reduce((a, p) => a + p.amount, 0);
     const bugunGunAdi = GUN_TR[(new Date().getDay() + 6) % 7];
-    return (React.createElement("div", null,
-        React.createElement("div", { className: "hero-panel" },
-            React.createElement("span", { className: "hero-note", style: { top: 6, left: "8%", "--r": "-8deg" } }, "\u266A"),
-            React.createElement("span", { className: "hero-note", style: { top: 40, left: "42%", "--r": "6deg", animationDelay: "1.2s" } }, "\u266B"),
-            React.createElement("span", { className: "hero-note", style: { top: -6, right: "6%", "--r": "10deg", animationDelay: "2.1s" } }, "\uD834\uDD1E"),
-            React.createElement("div", { style: { position: "relative" } },
-                React.createElement("div", { className: "text-xs font-semibold uppercase", style: { color: C.accent, letterSpacing: "0.08em" } }, "Ho\u015F geldiniz"),
-                React.createElement("h2", { className: "text-3xl mt-1", style: Object.assign(Object.assign({}, displayFont), { color: "#fff" }) }, "Mimaroba M\u00FCzik Kursu"),
-                React.createElement("p", { className: "text-sm mt-1", style: { color: "rgba(255,255,255,0.75)" } },
-                    "Bug\u00FCn ", bugunGunAdi, " \u2014 ", fmtDateTR(bugun), " \u00B7 ", bugunkuDersler.length, " ders bug\u00FCn planlanm\u0131\u015F."),
-                React.createElement("div", { className: "hero-instruments" }, ENSTRUMAN_EMOJI.map((e, i) => (React.createElement("span", { key: i, className: "hero-instrument-chip", style: { animationDelay: (i * 0.06) + "s" } },
-                    React.createElement("span", { className: "emoji" }, e),
-                    ENSTRUMANLAR[i] || ""))))),
-        ),
-        React.createElement("div", { className: "grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" },
-            React.createElement(StatCard, { label: "Aktif \u00D6\u011Frenci", value: aktifOgrenci.length, icon: "\uD83C\uDFAD", tone: "primary" }),
-            React.createElement(StatCard, { label: "\u00D6\u011Fretmen Say\u0131s\u0131", value: staff.filter(s => s.role === "ogretmen").length, icon: "\uD83C\uDF93", tone: "accent" }),
-            React.createElement(StatCard, { label: "Bor\u00E7lu \u00D6\u011Frenci", value: borcluSayisi, icon: "\u26A0\uFE0F", tone: borcluSayisi > 0 ? "danger" : "success" }),
-            React.createElement(StatCard, { label: "Bug\u00FCnk\u00FC Ders", value: bugunkuDersler.length, icon: "\uD83C\uDFB6", tone: "primary" })),
-        React.createElement("div", { className: "grid md:grid-cols-2 gap-4" },
-            React.createElement("div", { className: "panel-section-card", style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
-                React.createElement("h3", { className: "text-lg mb-2 flex items-center gap-2", style: displayFont },
-                    React.createElement("span", null, "\uD83D\uDCB0"), " Bu haftan\u0131n tahsilat\u0131"),
-                React.createElement("div", { className: "text-2xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buHaftaGelir)),
-                React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, weekRangeLabel(thisWeek)),
-                React.createElement("div", { className: "mt-3 pt-3", style: { borderTop: "1px solid " + C.line } },
-                    React.createElement("h3", { className: "text-sm mb-1", style: { color: C.inkSoft } }, "Bu ay\u0131n toplam tahsilat\u0131"),
-                    React.createElement("div", { className: "text-xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buAyGelir)),
-                    React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, monthLabel(thisMonth)))),
-            React.createElement("div", { className: "panel-section-card", style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
-                React.createElement("h3", { className: "text-lg mb-2 flex items-center gap-2", style: displayFont },
-                    React.createElement("span", null, "\u2757"), " Bor\u00E7lu \u00F6\u011Frenciler"),
-                borcluSayisi === 0 ? React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, "\u015Eu anda bor\u00E7lu \u00F6\u011Frenci yok. \uD83C\uDF89") : (React.createElement("ul", { className: "text-sm space-y-2" }, borcluOgrenciler.slice(0, 6).map(s => (React.createElement("li", { key: s.id, className: "flex justify-between items-center gap-2" },
-                    React.createElement("span", null, s.name),
-                    React.createElement("div", { className: "flex items-center gap-2" },
-                        React.createElement(Pill, { tone: "danger" },
-                            Math.abs(studentCredit(s.id)),
-                            " ders bor\u00E7lu"),
-                        React.createElement(WaButton, { phone: s.phone, label: "Hat\u0131rlat", message: aidatHatirlatMsg(s.name, studentCredit(s.id)) })))))))))));
+    // İki gün ders tanımlı aktif öğrenciler — yanlışlıkla haftada tek gün yerine
+    // iki gün girilmiş olabilecek kayıtları tek bakışta görüp düzeltebilmek için.
+    const cifGunluOgrenciler = aktifOgrenci.filter(s => s.weeklyDayIndex2 !== undefined && s.weeklyDayIndex2 !== null && s.weeklyDayIndex2 !== "");
+    function tekGuneDondur(studentId) {
+        setStudents(students.map(s => {
+            if (s.id !== studentId)
+                return s;
+            const next = Object.assign({}, s, { weeklyDayIndex2: "" });
+            if (Number(s.fee) === UCRET_BIREYSEL_CIFT)
+                next.fee = UCRET_BIREYSEL;
+            return next;
+        }));
+    }
+    const headerBlock = React.createElement("div", { key: "header", style: Object.assign(Object.assign({}, cardStyle), { padding: "20px 24px", borderLeft: "4px solid " + C.primary }) },
+        React.createElement("div", { className: "text-xs font-semibold", style: { color: C.inkSoft } }, bugunGunAdi + " \u00B7 " + fmtDateTR(bugun)),
+        React.createElement("h2", { className: "text-2xl mt-1", style: Object.assign(Object.assign({}, displayFont), { color: C.ink }) }, "Mimaroba M\u00FCzik Kursu"),
+        React.createElement("p", { className: "text-sm mt-1", style: { color: C.inkSoft } }, "Bug\u00FCn " + bugunkuDersler.length + " ders planland\u0131."));
+    const statsRow = React.createElement("div", { key: "stats", className: "grid grid-cols-2 md:grid-cols-4 gap-3" },
+        React.createElement(StatCard, { label: "Aktif \u00D6\u011Frenci", value: aktifOgrenci.length }),
+        React.createElement(StatCard, { label: "\u00D6\u011Fretmen Say\u0131s\u0131", value: staff.filter(s => s.role === "ogretmen").length }),
+        React.createElement(StatCard, { label: "Bor\u00E7lu \u00D6\u011Frenci", value: borcluSayisi, tone: borcluSayisi > 0 ? "danger" : "success" }),
+        React.createElement(StatCard, { label: "Bug\u00FCnk\u00FC Ders", value: bugunkuDersler.length }));
+    const gelirCard = React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
+        React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Bu haftan\u0131n tahsilat\u0131"),
+        React.createElement("div", { className: "text-2xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buHaftaGelir)),
+        React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, weekRangeLabel(thisWeek)),
+        React.createElement("div", { className: "mt-3 pt-3", style: { borderTop: "1px solid " + C.line } },
+            React.createElement("h3", { className: "text-sm mb-1", style: { color: C.inkSoft } }, "Bu ay\u0131n toplam tahsilat\u0131"),
+            React.createElement("div", { className: "text-xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buAyGelir)),
+            React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, monthLabel(thisMonth))));
+    const borcluListItems = borcluOgrenciler.slice(0, 6).map(s => React.createElement("li", { key: s.id, className: "flex justify-between items-center gap-2" },
+        React.createElement("span", null, s.name),
+        React.createElement("div", { className: "flex items-center gap-2" },
+            React.createElement(Pill, { tone: "danger" }, Math.abs(studentCredit(s.id)) + " ders bor\u00E7lu"),
+            React.createElement(WaButton, { phone: s.phone, label: "Hat\u0131rlat", message: aidatHatirlatMsg(s.name, studentCredit(s.id)) }))));
+    const borcluBody = borcluSayisi === 0
+        ? React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, "\u015Eu anda bor\u00E7lu \u00F6\u011Frenci yok.")
+        : React.createElement("ul", { className: "text-sm space-y-2" }, borcluListItems);
+    const borcluCard = React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
+        React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Bor\u00E7lu \u00F6\u011Frenciler"),
+        borcluBody);
+    const twoColRow = React.createElement("div", { key: "twocol", className: "grid md:grid-cols-2 gap-4" }, gelirCard, borcluCard);
+    let cifGunluCard = null;
+    if (cifGunluOgrenciler.length > 0) {
+        const rows = cifGunluOgrenciler.map(s => {
+            const tc = staff.find(t => t.id === s.teacherId);
+            return React.createElement("tr", { key: s.id },
+                React.createElement(Td, { className: "font-medium" }, s.name),
+                React.createElement(Td, null, tc ? tc.name : "—"),
+                React.createElement(Td, null, GUNLER[s.weeklyDayIndex] + " + " + GUNLER[s.weeklyDayIndex2]),
+                React.createElement(Td, { style: monoFont }, fmtTL(s.fee)),
+                React.createElement(Td, { className: "text-right" },
+                    React.createElement("button", { style: btnStyle("danger"), onClick: () => { if (confirm(s.name + " i\u00E7in ikinci g\u00FCn\u00FC kald\u0131r\u0131p tek g\u00FCne d\u00F6nd\u00FCrmek istedi\u011Finize emin misiniz?")) tekGuneDondur(s.id); } }, "Tek G\u00FCne D\u00F6nd\u00FCr")));
+        });
+        const table = React.createElement("div", { style: { overflowX: "auto" } },
+            React.createElement("table", { className: "w-full" },
+                React.createElement("thead", null,
+                    React.createElement("tr", null,
+                        React.createElement(Th, null, "\u00D6\u011Frenci"),
+                        React.createElement(Th, null, "\u00D6\u011Fretmen"),
+                        React.createElement(Th, null, "Tan\u0131ml\u0131 G\u00FCnler"),
+                        React.createElement(Th, null, "Aidat"),
+                        React.createElement(Th, null))),
+                React.createElement("tbody", null, rows)));
+        cifGunluCard = React.createElement("div", { key: "cifgunlu", style: Object.assign(Object.assign({}, cardStyle), { padding: 16, borderLeft: "4px solid " + C.danger }) },
+            React.createElement("h3", { className: "text-lg mb-1", style: displayFont }, "Haftada 2 g\u00FCn ders tan\u0131ml\u0131 \u00F6\u011Frenciler"),
+            React.createElement("p", { className: "text-xs mb-3", style: { color: C.inkSoft } }, "Bu \u00F6\u011Frencilerin kayd\u0131nda iki ayr\u0131 haftal\u0131k ders g\u00FCn\u00FC tan\u0131ml\u0131. E\u011Fer bu, telafi g\u00FCn\u00FC de\u011Fil de yanl\u0131\u015Fl\u0131kla girilmi\u015F ikinci bir sabit g\u00FCn ise, ilgili sat\u0131rdaki \u201CTek G\u00FCne D\u00F6nd\u00FCr\u201D butonuyla d\u00FCzeltebilirsiniz."),
+            table);
+    }
+    const children = [headerBlock, statsRow, twoColRow];
+    if (cifGunluCard)
+        children.push(cifGunluCard);
+    return React.createElement("div", { className: "space-y-5" }, ...children);
 }
-function StatCard({ label, value, tone, icon }) {
-    const color = tone === "danger" ? C.danger : tone === "success" ? C.success : tone === "accent" ? "#8a6a12" : C.primary;
-    const badgeBg = tone === "danger" ? C.dangerBg : tone === "success" ? C.successBg : tone === "accent" ? C.accentSoft : "#EAE7F5";
-    return (React.createElement("div", { className: "stat-card", style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
-        icon && React.createElement("div", { className: "stat-icon-badge", style: { background: badgeBg } }, icon),
-        React.createElement("div", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft, maxWidth: "70%" } }, label),
+function StatCard({ label, value, tone }) {
+    const color = tone === "danger" ? C.danger : tone === "success" ? C.success : C.primary;
+    return (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
+        React.createElement("div", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, label),
         React.createElement("div", { className: "text-3xl mt-1", style: Object.assign(Object.assign({}, displayFont), { color }) }, value)));
 }
 /* ---------------- Personel ---------------- */
