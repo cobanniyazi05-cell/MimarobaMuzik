@@ -883,7 +883,12 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                         .filter(d => d !== undefined && d !== null && d !== "").map(Number).sort();
                     const daysChanged = oldDays.join(",") !== newDays.join(",");
                     if (daysChanged) {
-                        const today = toISODate(new Date());
+                        // İçinde bulunulan haftanın Pazartesi'sinden itibaren (geçmiş haftalara
+                        // dokunmadan) eski güne ait, henüz işlenmemiş "Bekliyor" kayıtları silinir.
+                        // "today" yerine haftanın başlangıcı kullanılıyor ki, değişiklik o hafta
+                        // içindeki geçmiş bir güne denk gelse bile (örn. Perşembe günü, o hafta
+                        // Pazartesi'si için yapılan bir değişiklik) yine temizlensin.
+                        const weekStart = currentWeekKey();
                         nextLessons = nextLessons.filter(l => {
                             if (l.studentId !== editing)
                                 return true;
@@ -891,11 +896,30 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                                 return true; // telafi dersleri her zaman korunur
                             if (l.status !== "bekliyor")
                                 return true; // işlenmiş dersler korunur
-                            if (l.date < today)
-                                return true; // geçmişte kalmış olabilecek kayıtlara dokunma
+                            if (l.date < weekStart)
+                                return true; // geçmiş haftalara dokunulmaz
                             const haftaGunIndex = (fromISODate(l.date).getDay() + 6) % 7; // Pazartesi=0
                             return newDays.includes(haftaGunIndex); // yeni günlerden birine denk gelmiyorsa silinir
                         });
+                        // İçinde bulunulan hafta için yeni güne ait ders kaydı henüz yoksa hemen
+                        // oluşturulur; böylece değişiklik bir sonraki haftayı ya da "Ders Takvimi"
+                        // sekmesinin o haftaya tekrar girilmesini beklemeden anında uygulanır.
+                        if (normalized.status === "aktif") {
+                            const existingThisWeek = new Set(nextLessons.filter(l => l.studentId === editing && l.weekKey === weekStart && !l.isTelafi).map(l => l.date));
+                            newDays.forEach(gun => {
+                                const dersTarihi = dateForWeekday(weekStart, gun);
+                                if (normalized.registerDate && dersTarihi < normalized.registerDate)
+                                    return;
+                                if (existingThisWeek.has(dersTarihi))
+                                    return;
+                                nextLessons = nextLessons.concat([{
+                                    id: uid("ders"), studentId: editing, teacherId: normalized.teacherId,
+                                    date: dersTarihi, weekKey: weekStart,
+                                    status: "bekliyor", isTelafi: false, linkedTo: null, telafiForDate: null,
+                                }]);
+                                existingThisWeek.add(dersTarihi);
+                            });
+                        }
                     }
                 }
                 // Öğrenci "ayrıldı" olarak işaretlendiyse, ayrılma tarihinden
