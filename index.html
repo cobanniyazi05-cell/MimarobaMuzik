@@ -858,6 +858,7 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
         if (!form.name.trim() || !form.teacherId)
             return;
         if (editing) {
+            const original = students.find(s => s.id === editing);
             // Durum "ayrıldı" ise ama tarih girilmemişse bugünü kullan; "aktif"e
             // dönülürse ayrılma tarihi temizlenir ki öğrenci yeniden ders alabilsin.
             const normalized = Object.assign({}, form, {
@@ -865,14 +866,45 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                 leftDate: form.status === "ayrildi" ? (form.leftDate || toISODate(new Date())) : "",
             });
             setStudents(students.map(s => s.id === editing ? normalized : s));
-            // Ayrılma tarihi bu ekrandan geriye doğru düzeltilmiş olabilir (örn.
-            // öğrenci aslında geçen hafta ayrıldığı halde "Ayrıldı" butonuna bugün
-            // basılmıştı). Bu durumda, düzeltilen tarihten itibaren zaten
-            // tanımlanmış olan ders takvimi kayıtları da temizlenir.
             if (setLessons) {
-                if (normalized.status === "ayrildi") {
-                    setLessons(lessons.filter(l => !(l.studentId === editing && l.date >= normalized.leftDate)));
+                let nextLessons = lessons;
+                // Haftalık ders günü değişikliği kontrolü: öğrencinin 1. veya 2.
+                // ders günü bu düzenlemede değiştirildiyse, henüz işlenmemiş
+                // ("Bekliyor" durumundaki) ve telafi olmayan, eski güne göre
+                // otomatik planlanmış gelecek ders kayıtları burada temizlenir.
+                // Böylece eski gün silinmeden yeni gün eklenmiş olmaz ve
+                // öğrenci haftada 2 gün ders almış gibi görünmez. Geçmişte
+                // zaten "Yapıldı / Mazeretli / Mazeretsiz / Pas" olarak
+                // işaretlenmiş kayıtlara ve telafi derslerine dokunulmaz.
+                if (original) {
+                    const oldDays = [original.weeklyDayIndex, original.weeklyDayIndex2]
+                        .filter(d => d !== undefined && d !== null && d !== "").map(Number).sort();
+                    const newDays = [normalized.weeklyDayIndex, normalized.weeklyDayIndex2]
+                        .filter(d => d !== undefined && d !== null && d !== "").map(Number).sort();
+                    const daysChanged = oldDays.join(",") !== newDays.join(",");
+                    if (daysChanged) {
+                        const today = toISODate(new Date());
+                        nextLessons = nextLessons.filter(l => {
+                            if (l.studentId !== editing)
+                                return true;
+                            if (l.isTelafi)
+                                return true; // telafi dersleri her zaman korunur
+                            if (l.status !== "bekliyor")
+                                return true; // işlenmiş dersler korunur
+                            if (l.date < today)
+                                return true; // geçmişte kalmış olabilecek kayıtlara dokunma
+                            const haftaGunIndex = (fromISODate(l.date).getDay() + 6) % 7; // Pazartesi=0
+                            return newDays.includes(haftaGunIndex); // yeni günlerden birine denk gelmiyorsa silinir
+                        });
+                    }
                 }
+                // Öğrenci "ayrıldı" olarak işaretlendiyse, ayrılma tarihinden
+                // itibaren tüm ders kayıtları (yukarıdaki filtreden bağımsız olarak) temizlenir.
+                if (normalized.status === "ayrildi") {
+                    nextLessons = nextLessons.filter(l => !(l.studentId === editing && l.date >= normalized.leftDate));
+                }
+                if (nextLessons !== lessons)
+                    setLessons(nextLessons);
             }
         }
         else {
@@ -1127,6 +1159,14 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
         const next = lessons.filter(x => !linkedIds.has(x.id)).map(x => x.id === l.id ? Object.assign(Object.assign({}, x), { status: "bekliyor" }) : x);
         setLessons(next);
     }
+    // Manuel düzeltme: henüz işlenmemiş ("Bekliyor") bir ders kaydını takvimden
+    // tamamen kaldırmak için. Öğrencinin ders günü yakın zamanda değiştirilip de
+    // eski güne ait fazladan bir kayıt kalmışsa (örn. bu düzeltmeden önce
+    // oluşmuş eski veriler için), kurucu/müdür bu butonla elle silebilir.
+    function removeLesson(l) {
+        if (confirm(fmtDateTR(l.date) + " tarihli bu ders kaydını takvimden tamamen silmek istediğinize emin misiniz? Bu işlem yalnızca henüz işlenmemiş (Bekliyor) hatalı/fazladan kayıtlar için kullanılmalıdır."))
+            setLessons(lessons.filter(x => x.id !== l.id));
+    }
     const telafiWeekEnd = telafiWeekKey ? (() => { const d = fromISODate(telafiWeekKey); d.setDate(d.getDate() + 6); return toISODate(d); })() : null;
     const telafiMinDate = telafiOrigDate ? addDays(telafiOrigDate, 1) : telafiWeekKey;
     function confirmMazeret() {
@@ -1193,6 +1233,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                             React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(l.id, "mazeretli") }, "Mazeretli"),
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(l.id, "mazeretsiz") }, "Mazeretsiz"),
                             React.createElement("button", { style: btnStyle("warning"), onClick: () => setStatus(l.id, "pas") }, "Pas"),
+                            canMarkPas && React.createElement("button", { style: btnStyle("ghost"), title: "Bu ders kaydını takvimden tamamen kaldırır (örn. yanlışlıkla eski güne göre oluşmuş fazladan kayıtları temizlemek için)", onClick: () => removeLesson(l) }, "Sil"),
                             React.createElement(WaButton, { phone: st.phone, label: "Hat\u0131rlat", message: "Merhaba, Mimaroba M\u00FCzik Kursu mesaj\u0131d\u0131r. " + st.name + " adl\u0131 \u00F6\u011Frencimizin " + fmtDateTR(l.date) + " tarihli dersini hat\u0131rlatmak isteriz. Mutlu ve m\u00FCzikli g\u00FCnler dileriz." }))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => undoStatus(l) }, "Geri Al")))));
                 }))))),
         telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => { setTelafiFor(null); setTelafiWeekKey(null); setTelafiOrigDate(null); } },
