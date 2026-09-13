@@ -1407,6 +1407,36 @@ function computeTeacherWeek(lessons, students, teacherId, weekKey, teacherName) 
     });
     return { rows, total };
 }
+// Ders Takvimi'ndeki gösterimle tutarlı olması için: mazeretli bir ders ile ait
+// olduğu telafi dersini (zincirleme telafi varsa onu da) tek bir satırda göstermek
+// üzere gruplar. Hakediş toplamı bundan etkilenmez (her ders zaten ayrı ayrı
+// hesaplanmıştır); bu sadece görünümü birleştirir.
+function buildHakedisRowChains(rows) {
+    const telafiByOriginal = {};
+    rows.forEach(r => {
+        if (r.lesson.isTelafi && r.lesson.linkedTo)
+            telafiByOriginal[r.lesson.linkedTo] = r;
+    });
+    const consumed = new Set();
+    function chainFrom(r) {
+        const chain = [r];
+        let current = r;
+        while (telafiByOriginal[current.lesson.id]) {
+            const next = telafiByOriginal[current.lesson.id];
+            chain.push(next);
+            consumed.add(next.lesson.id);
+            current = next;
+        }
+        return chain;
+    }
+    const chains = rows.filter(r => !r.lesson.isTelafi).map(chainFrom);
+    rows.forEach(r => {
+        if (r.lesson.isTelafi && !consumed.has(r.lesson.id))
+            chains.push([r]);
+    });
+    chains.sort((a, b) => a[0].lesson.date.localeCompare(b[0].lesson.date));
+    return chains;
+}
 function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeacherId }) {
     const [weekKey, setWeekKey] = useState(currentWeekKey());
     const list = onlyTeacherId ? teachers.filter(t => t.id === onlyTeacherId) : teachers;
@@ -1447,17 +1477,32 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
                             React.createElement(Th, null, "T\u00FCr"),
                             React.createElement(Th, null, "Durum"),
                             React.createElement(Th, null, "Tutar"))),
-                    React.createElement("tbody", null, rows.map(r => (React.createElement("tr", { key: r.lesson.id },
-                        React.createElement(Td, { style: monoFont }, fmtDateTR(r.lesson.date)),
-                        React.createElement(Td, null, r.student ? r.student.name : "—"),
-                        React.createElement(Td, null, r.student && r.student.courseType === "grup" ? "Grup" : "Bireysel"),
-                        React.createElement(Td, null,
-                            r.lesson.status === "yapildi" && React.createElement(Pill, { tone: "success" }, "Yap\u0131ld\u0131"),
-                            r.lesson.status === "mazeretli" && React.createElement(Pill, { tone: "accent" }, "Mazeretli (\u00FCcretsiz)"),
-                            r.lesson.status === "mazeretsiz" && React.createElement(Pill, { tone: "danger" }, "Mazeretsiz (\u00FCcretsiz)"),
-                            r.lesson.status === "bekliyor" && React.createElement(Pill, null, "Bekliyor"),
-                            r.lesson.status === "pas" && React.createElement(Pill, { tone: "warning" }, "Pas (\u00FCcretsiz)")),
-                        React.createElement(Td, { style: monoFont }, r.pay > 0 ? fmtTL(r.pay) : "—")))))))));
+                    React.createElement("tbody", null, buildHakedisRowChains(rows).map(chain => {
+                        const first = chain[0];
+                        const last = chain[chain.length - 1];
+                        const student = first.student;
+                        const rowPay = chain.reduce((a, c) => a + c.pay, 0);
+                        const dateNodes = [];
+                        chain.forEach((c, idx) => {
+                            if (idx > 0)
+                                dateNodes.push(React.createElement("span", { key: "ok-" + c.lesson.id, className: "mx-1" }, "\u2192"));
+                            dateNodes.push(React.createElement("span", { key: c.lesson.id },
+                                fmtDateTR(c.lesson.date),
+                                c.lesson.isTelafi && React.createElement("span", { className: "ml-1" },
+                                    React.createElement(Pill, { tone: "accent" }, "Telafi"))));
+                        });
+                        return React.createElement("tr", { key: first.lesson.id },
+                            React.createElement(Td, { style: monoFont }, ...dateNodes),
+                            React.createElement(Td, null, student ? student.name : "—"),
+                            React.createElement(Td, null, student && student.courseType === "grup" ? "Grup" : "Bireysel"),
+                            React.createElement(Td, null,
+                                last.lesson.status === "yapildi" && React.createElement(Pill, { tone: "success" }, "Yap\u0131ld\u0131"),
+                                last.lesson.status === "mazeretli" && React.createElement(Pill, { tone: "accent" }, "Mazeretli (\u00FCcretsiz)"),
+                                last.lesson.status === "mazeretsiz" && React.createElement(Pill, { tone: "danger" }, "Mazeretsiz (\u00FCcretsiz)"),
+                                last.lesson.status === "bekliyor" && React.createElement(Pill, null, "Bekliyor"),
+                                last.lesson.status === "pas" && React.createElement(Pill, { tone: "warning" }, "Pas (\u00FCcretsiz)")),
+                            React.createElement(Td, { style: monoFont }, rowPay > 0 ? fmtTL(rowPay) : "—"));
+                    }))))));
         })))));
 }
 /* ---------------- Giderler ---------------- */
