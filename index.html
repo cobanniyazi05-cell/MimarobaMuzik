@@ -1125,6 +1125,36 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     // Ayrılan öğrencinin, ayrıldığı tarihten itibaren dersleri takvimde gösterilmez
     weekLessons = weekLessons.filter(l => !isDepartedLesson(l, studentById(l.studentId)));
     weekLessons = weekLessons.slice().sort((a, b) => a.date.localeCompare(b.date));
+    // Mazeretli bir ders ile ait olduğu telafi dersini (zincirleme olarak telafinin
+    // de telafisi varsa onu da) tek bir satırda göstermek için gruplama yapılır.
+    // Telafi dersleri her zaman kendi orijinaliyle aynı haftada oluşturulduğundan
+    // (bkz. confirmMazeret'teki hafta kısıtlaması), bu eşleştirme aynı haftalık
+    // görünüm içinde güvenle yapılabilir.
+    const telafiByOriginal = {};
+    weekLessons.forEach(l => {
+        if (l.isTelafi && l.linkedTo)
+            telafiByOriginal[l.linkedTo] = l;
+    });
+    const consumedTelafiIds = new Set();
+    function buildChain(l) {
+        const chain = [l];
+        let current = l;
+        while (telafiByOriginal[current.id]) {
+            const next = telafiByOriginal[current.id];
+            chain.push(next);
+            consumedTelafiIds.add(next.id);
+            current = next;
+        }
+        return chain;
+    }
+    const rowChains = weekLessons.filter(l => !l.isTelafi).map(buildChain);
+    // Orijinali bu haftalık görünümde bulunmayan (normalde oluşmaması gereken) bir
+    // telafi kaydı varsa, veri kaybolmasın diye yine tek başına bir satır olarak eklenir.
+    weekLessons.forEach(l => {
+        if (l.isTelafi && !consumedTelafiIds.has(l.id))
+            rowChains.push([l]);
+    });
+    rowChains.sort((a, b) => a[0].date.localeCompare(b[0].date));
     // Bir dersin durumu değiştiğinde, ait olduğu hafta zaten "Ödendi" olarak
     // işaretlenmişse o hafta otomatik "ödenmedi"ye çevrilir; böylece kurucu/müdür
     // tutarı yeniden hesaplayıp doğru haliyle tekrar onaylamak zorunda kalır.
@@ -1226,28 +1256,38 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                         React.createElement(Th, null, "T\u00FCr"),
                         React.createElement(Th, null, "Durum"),
                         React.createElement(Th, null))),
-                React.createElement("tbody", null, weekLessons.map(l => {
-                    const st = studentById(l.studentId);
-                    const tc = teacherById(l.teacherId);
+                React.createElement("tbody", null, rowChains.map(chain => {
+                    const first = chain[0];
+                    const last = chain[chain.length - 1];
+                    const st = studentById(first.studentId);
+                    const tc = teacherById(first.teacherId);
                     if (!st)
                         return null;
-                    return (React.createElement("tr", { key: l.id },
-                        React.createElement(Td, { style: monoFont },
-                            fmtDateTR(l.date),
-                            l.isTelafi && React.createElement("span", { className: "ml-1" },
-                                React.createElement(Pill, { tone: "accent" }, "Telafi"))),
+                    const parent = chain.length > 1 ? chain[chain.length - 2] : null;
+                    const dateNodes = [];
+                    chain.forEach((cl, idx) => {
+                        if (idx > 0)
+                            dateNodes.push(React.createElement("span", { key: "ok-" + cl.id, className: "mx-1" }, "\u2192"));
+                        dateNodes.push(React.createElement("span", { key: cl.id },
+                            fmtDateTR(cl.date),
+                            cl.isTelafi && React.createElement("span", { className: "ml-1" },
+                                React.createElement(Pill, { tone: "accent" }, "Telafi"))));
+                    });
+                    return (React.createElement("tr", { key: first.id },
+                        React.createElement(Td, { style: monoFont }, ...dateNodes),
                         React.createElement(Td, null, st.name),
                         React.createElement(Td, null, tc ? tc.name : "—"),
                         React.createElement(Td, null, st.courseType === "bireysel" ? "Bireysel" : "Grup"),
                         React.createElement(Td, null,
-                            React.createElement(Pill, { tone: statusMeta[l.status].tone }, statusMeta[l.status].label)),
-                        React.createElement(Td, { className: "text-right whitespace-nowrap" }, l.status === "bekliyor" ? (React.createElement("div", { className: "flex gap-1 justify-end flex-wrap" },
-                            React.createElement("button", { style: btnStyle("primary"), onClick: () => setStatus(l.id, "yapildi") }, "Yap\u0131ld\u0131"),
-                            React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(l.id, "mazeretli") }, "Mazeretli"),
-                            React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(l.id, "mazeretsiz") }, "Mazeretsiz"),
-                            React.createElement("button", { style: btnStyle("warning"), onClick: () => setStatus(l.id, "pas") }, "Pas"),
-                            canMarkPas && React.createElement("button", { style: btnStyle("ghost"), title: "Bu ders kaydını takvimden tamamen kaldırır (örn. yanlışlıkla eski güne göre oluşmuş fazladan kayıtları temizlemek için)", onClick: () => removeLesson(l) }, "Sil"),
-                            React.createElement(WaButton, { phone: st.phone, label: "Hat\u0131rlat", message: "Merhaba, Mimaroba M\u00FCzik Kursu mesaj\u0131d\u0131r. " + st.name + " adl\u0131 \u00F6\u011Frencimizin " + fmtDateTR(l.date) + " tarihli dersini hat\u0131rlatmak isteriz. Mutlu ve m\u00FCzikli g\u00FCnler dileriz." }))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => undoStatus(l) }, "Geri Al")))));
+                            React.createElement(Pill, { tone: statusMeta[last.status].tone }, statusMeta[last.status].label)),
+                        React.createElement(Td, { className: "text-right whitespace-nowrap" }, last.status === "bekliyor" ? (React.createElement("div", { className: "flex gap-1 justify-end flex-wrap" },
+                            React.createElement("button", { style: btnStyle("primary"), onClick: () => setStatus(last.id, "yapildi") }, "Yap\u0131ld\u0131"),
+                            React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(last.id, "mazeretli") }, "Mazeretli"),
+                            React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(last.id, "mazeretsiz") }, "Mazeretsiz"),
+                            React.createElement("button", { style: btnStyle("warning"), onClick: () => setStatus(last.id, "pas") }, "Pas"),
+                            parent && React.createElement("button", { style: btnStyle("ghost"), title: "Mazereti ve planlanan telafiyi iptal edip dersi tekrar bekliyor durumuna al\u0131r", onClick: () => undoStatus(parent) }, "Mazereti \u0130ptal Et"),
+                            canMarkPas && React.createElement("button", { style: btnStyle("ghost"), title: "Bu ders kaydını takvimden tamamen kaldırır (örn. yanlışlıkla eski güne göre oluşmuş fazladan kayıtları temizlemek için)", onClick: () => removeLesson(last) }, "Sil"),
+                            React.createElement(WaButton, { phone: st.phone, label: "Hat\u0131rlat", message: "Merhaba, Mimaroba M\u00FCzik Kursu mesaj\u0131d\u0131r. " + st.name + " adl\u0131 \u00F6\u011Frencimizin " + fmtDateTR(last.date) + " tarihli dersini hat\u0131rlatmak isteriz. Mutlu ve m\u00FCzikli g\u00FCnler dileriz." }))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => undoStatus(last) }, "Geri Al")))));
                 }))))),
         telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => { setTelafiFor(null); setTelafiWeekKey(null); setTelafiOrigDate(null); } },
             React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "\u00D6\u011Frenci \u00F6nceden haber verdi\u011Fi i\u00E7in bu dersin hakk\u0131 yanmayacak. Telafi dersi i\u00E7in, mazeret belirtilen g\u00FCnden sonra, o haftan\u0131n (" + (telafiWeekKey ? weekRangeLabel(telafiWeekKey) : "") + ") kalan g\u00FCnlerinden birini se\u00E7in."),
