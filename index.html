@@ -98,7 +98,7 @@ function toISODate(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "
 function fromISODate(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
 function addDays(iso, n) { const d = fromISODate(iso); d.setDate(d.getDate() + n); return toISODate(d); }
 function fmtTL(n) { return (Math.round(n || 0)).toLocaleString("tr-TR") + " ₺"; }
-function fmtDateTR(iso) { const d = fromISODate(iso); return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear(); }
+function fmtDateTR(iso) { if (!iso) return "—"; const d = fromISODate(iso); return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear(); }
 
 function isDepartedLesson(lesson, student) {
     return !!(student && student.status === "ayrildi" && student.leftDate && lesson.date >= student.leftDate);
@@ -286,27 +286,21 @@ function Th({ children }) { return React.createElement("th", { className: "text-
 function Td({ children, className, style }) { return React.createElement("td", { className: className, style: Object.assign({ padding: 10, borderBottom: "1px solid " + C.line, fontSize: 14, verticalAlign: "middle" }, style) }, children); }
 
 /* ---------------- Aktif Aidat Döngüsü & Renk Hesaplama ---------------- */
-// Tüketilmiş eski aidat derslerini gizler, sadece güncel aidat paketini ve varsa borçlu yapılan dersleri gösterir.
 function calculateStudentLessonHistory(student, payments, lessons) {
     if (!student) return [];
 
-    // 1. Öğrencinin bugüne kadarki toplam satın aldığı ders hakkı
     const totalCredits = (payments || [])
         .filter(p => p.studentId === student.id)
         .reduce((sum, p) => sum + (Number(p.amount) >= UCRET_BIREYSEL_CIFT ? ODEME_KREDI_CIFT : ODEME_KREDI), 0)
         + (student.creditAdjustment ? Number(student.creditAdjustment) : 0);
 
-    // 2. Bir aidat paketinin kaç dersten oluştuğu (haftada 2 gün alanlar 8, tek gün alanlar 4 ders)
     const packageSize = (student.weeklyDayIndex2 !== undefined && student.weeklyDayIndex2 !== null && student.weeklyDayIndex2 !== "")
         ? ODEME_KREDI_CIFT : ODEME_KREDI;
 
-    // 3. Geçmişte tamamı tüketilip kapanmış ders sayısı (Geçmiş aidatlara ait dersler gizlenir)
-    // Eğer öğrenci borçluysa (tüm haklar bitmişse), son paketin tamamı da tükenmiş sayılır ve gizlenir.
     const completedCredits = totalCredits > 0
         ? Math.floor(Math.max(0, totalCredits - 1) / packageSize) * packageSize
         : 0;
 
-    // 4. Öğrencinin yapılmış / mazeretsiz dersleri (kronolojik sırada)
     const validLessons = (lessons || [])
         .filter(l => l.studentId === student.id && (l.status === "yapildi" || l.status === "mazeretsiz"))
         .slice().sort((a, b) => a.date.localeCompare(b.date));
@@ -316,7 +310,6 @@ function calculateStudentLessonHistory(student, payments, lessons) {
 
     validLessons.forEach(l => {
         usedCount++;
-        // Tüketilmiş eski aidat paketlerine ait dersleri gizle
         if (usedCount <= completedCredits) {
             return;
         }
@@ -325,20 +318,20 @@ function calculateStudentLessonHistory(student, payments, lessons) {
         let statusLabel = "";
 
         if (l.status === "mazeretsiz") {
-            tone = "warning"; // Sarı: mazeretsiz yandı
+            tone = "warning";
             statusLabel = "Mazeretsiz (Hak Yandı)";
         } else if (usedCount <= totalCredits) {
-            tone = "success"; // Yeşil: aidat kapsamında yapıldı
+            tone = "success";
             statusLabel = "Aidat Kapsamında Yapıldı";
         } else {
-            tone = "danger"; // Kırmızı: hak bitti, borçlu yapıldı
+            tone = "danger";
             statusLabel = "Borçlu Ders (Aidat Yatınca Yeşile Dönecek)";
         }
 
         result.push(Object.assign(Object.assign({}, l), { tone, statusLabel, orderIndex: usedCount }));
     });
 
-    return result.reverse(); // En yeni ders üstte/başta olacak şekilde
+    return result.reverse();
 }
 
 /* ---------------- Bağlantı Kontrolü ---------------- */
@@ -544,15 +537,17 @@ function App() {
         return paid - used + manualAdj;
     }, [payments, lessons, students]);
 
+    // Ders takvimine otomatik ders planlama: artık öğrencinin "ilk ders tarihi"ni esas alır
     const ensureWeekLessons = useCallback((weekKey) => {
         const existingPairs = new Set(lessons.filter(l => l.weekKey === weekKey && !l.isTelafi).map(l => l.studentId + "|" + l.date));
         const toAdd = [];
         students.forEach(st => {
             if (st.status !== "aktif") return;
             const gunler = [st.weeklyDayIndex, st.weeklyDayIndex2].filter(d => d !== undefined && d !== null && d !== "");
+            const baslangicTarihi = st.firstLessonDate || st.registerDate; // İlk ders tarihi esas alınır
             gunler.forEach(gun => {
                 const dersTarihi = dateForWeekday(weekKey, Number(gun));
-                if (st.registerDate && dersTarihi < st.registerDate) return;
+                if (baslangicTarihi && dersTarihi < baslangicTarihi) return; // İlk ders tarihinden önceki günlere ders tanımlanmaz
                 const pairKey = st.id + "|" + dersTarihi;
                 if (existingPairs.has(pairKey)) return;
                 existingPairs.add(pairKey);
@@ -794,41 +789,51 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
     const blank = () => ({
         name: "", parentName: "", phone: "", address: "",
         instrument: ENSTRUMANLAR[0], courseType: "bireysel",
-        teacherId: "", fee: UCRET_BIREYSEL, registerDate: toISODate(new Date()),
+        teacherId: "", fee: UCRET_BIREYSEL,
+        registerDate: toISODate(new Date()),
+        firstLessonDate: toISODate(new Date()), // Yeni eklenen İlk Ders Tarihi alanı
         weeklyDayIndex: 0, weeklyDayIndex2: "", status: "aktif", leftDate: "", creditAdjustment: 0,
     });
     const [form, setForm] = useState(blank());
     const [editing, setEditing] = useState(null);
 
     function openNew() { setForm(blank()); setEditing(null); setShowForm(true); }
-    function openEdit(s) { setForm(Object.assign(Object.assign({}, blank()), s)); setEditing(s.id); setShowForm(true); }
+    function openEdit(s) {
+        setForm(Object.assign(Object.assign({}, blank()), s, {
+            firstLessonDate: s.firstLessonDate || s.registerDate || toISODate(new Date()) // Eski kayıtlarda yoksa kayıt tarihini alır
+        }));
+        setEditing(s.id);
+        setShowForm(true);
+    }
 
     function save() {
         if (!form.name.trim() || !form.teacherId) return;
+        const normalizedFirstLesson = form.firstLessonDate || form.registerDate; // İlk ders tarihi boşsa kayıt tarihini kullanır[cite: 1]
         if (editing) {
             const original = students.find(s => s.id === editing);
             const normalized = Object.assign({}, form, {
                 id: editing, fee: Number(form.fee), creditAdjustment: Number(form.creditAdjustment) || 0,
+                firstLessonDate: normalizedFirstLesson,
                 leftDate: form.status === "ayrildi" ? (form.leftDate || toISODate(new Date())) : "",
             });
             setStudents(students.map(s => s.id === editing ? normalized : s));
             if (setLessons) {
                 let nextLessons = lessons;
-                if (original) {
-                    const oldDays = [original.weeklyDayIndex, original.weeklyDayIndex2]
-                        .filter(d => d !== undefined && d !== null && d !== "").map(Number).sort();
-                    const newDays = [normalized.weeklyDayIndex, normalized.weeklyDayIndex2]
-                        .filter(d => d !== undefined && d !== null && d !== "").map(Number).sort();
-                    const daysChanged = oldDays.join(",") !== newDays.join(",");
-                    if (daysChanged) {
-                        nextLessons = nextLessons.filter(l => {
-                            if (l.studentId !== editing) return true;
-                            if (l.isTelafi) return true;
-                            if (l.status !== "bekliyor") return true;
-                            const haftaGunIndex = (fromISODate(l.date).getDay() + 6) % 7;
-                            return newDays.includes(haftaGunIndex);
-                        });
-                    }
+                // İlk ders tarihi değiştiyse veya gün değiştiyse, ilk ders tarihinden önceki bekleyen dersleri temizle[cite: 1]
+                const oldDays = original ? [original.weeklyDayIndex, original.weeklyDayIndex2].filter(d => d !== undefined && d !== null && d !== "").map(Number).sort() : [];
+                const newDays = [normalized.weeklyDayIndex, normalized.weeklyDayIndex2].filter(d => d !== undefined && d !== null && d !== "").map(Number).sort();
+                const daysChanged = oldDays.join(",") !== newDays.join(",");
+                const startChanged = original && (original.firstLessonDate || original.registerDate) !== normalizedFirstLesson;
+
+                if (daysChanged || startChanged) {
+                    nextLessons = nextLessons.filter(l => {
+                        if (l.studentId !== editing) return true;
+                        if (l.isTelafi) return true;
+                        if (l.status !== "bekliyor") return true;
+                        if (l.date < normalizedFirstLesson) return false; // İlk ders tarihinden önceki bekleyen dersleri kaldırır
+                        const haftaGunIndex = (fromISODate(l.date).getDay() + 6) % 7;
+                        return newDays.includes(haftaGunIndex);
+                    });
                 }
                 if (normalized.status === "ayrildi") {
                     nextLessons = nextLessons.filter(l => !(l.studentId === editing && l.date >= normalized.leftDate));
@@ -836,7 +841,12 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                 if (nextLessons !== lessons) setLessons(nextLessons);
             }
         } else {
-            const newStudent = Object.assign(Object.assign({}, form), { id: uid("ogr"), fee: Number(form.fee), creditAdjustment: Number(form.creditAdjustment) || 0 });
+            const newStudent = Object.assign(Object.assign({}, form), {
+                id: uid("ogr"),
+                fee: Number(form.fee),
+                firstLessonDate: normalizedFirstLesson,
+                creditAdjustment: Number(form.creditAdjustment) || 0
+            });
             setStudents([...students, newStudent]);
         }
         setShowForm(false);
@@ -913,13 +923,24 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                     React.createElement("input", { style: inputStyle, type: "tel", value: form.phone, onChange: e => setForm(Object.assign(Object.assign({}, form), { phone: e.target.value })) })),
                 React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Kayıt Tarihi"),
-                    React.createElement("input", { style: inputStyle, type: "date", value: form.registerDate, onChange: e => setForm(Object.assign(Object.assign({}, form), { registerDate: e.target.value })) })),
-                React.createElement("div", { className: "md:col-span-2" },
-                    React.createElement("label", { style: labelStyle }, "Adres"),
-                    React.createElement("textarea", { style: inputStyle, rows: "2", value: form.address, onChange: e => setForm(Object.assign(Object.assign({}, form), { address: e.target.value })) })),
+                    React.createElement("input", { style: inputStyle, type: "date", value: form.registerDate, onChange: e => {
+                        const val = e.target.value;
+                        setForm(f => Object.assign(Object.assign({}, f), {
+                            registerDate: val,
+                            // İlk ders tarihi daha önce değiştirilmediyse veya boşsa kayıt tarihiyle eşle[cite: 1]
+                            firstLessonDate: (!f.firstLessonDate || f.firstLessonDate === f.registerDate) ? val : f.firstLessonDate
+                        }));
+                    } })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "İlk Ders Tarihi (Ders Başlangıcı)"),
+                    React.createElement("input", { style: inputStyle, type: "date", value: form.firstLessonDate || form.registerDate, onChange: e => setForm(Object.assign(Object.assign({}, form), { firstLessonDate: e.target.value })) }),
+                    React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, "Ders takviminde bu tarihten itibaren ders planlaması yapılmaya başlanır.")),
                 React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Enstrüman"),
                     React.createElement("select", { style: inputStyle, value: form.instrument, onChange: e => setForm(Object.assign(Object.assign({}, form), { instrument: e.target.value })) }, ENSTRUMANLAR.map(i => React.createElement("option", { key: i, value: i }, i)))),
+                React.createElement("div", { className: "md:col-span-2" },
+                    React.createElement("label", { style: labelStyle }, "Adres"),
+                    React.createElement("textarea", { style: inputStyle, rows: "2", value: form.address, onChange: e => setForm(Object.assign(Object.assign({}, form), { address: e.target.value })) })),
                 React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Ders Türü"),
                     React.createElement("select", { style: inputStyle, value: form.courseType, onChange: e => { const ct = e.target.value; setForm(Object.assign(Object.assign({}, form), { courseType: ct, fee: ct === "bireysel" ? UCRET_BIREYSEL : UCRET_GRUP })); } },
@@ -970,7 +991,7 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
         detail && React.createElement(StudentDetailModal, { student: students.find(s => s.id === detail), teacherName: teacherName, payments: payments, lessons: lessons, studentCredit: studentCredit, onClose: () => setDetail(null) })));
 }
 
-/* ---------------- Öğrenci Detay Penceresi (İstenen Güncel Aidat Döngüsü İle) ---------------- */
+/* ---------------- Öğrenci Detay Penceresi ---------------- */
 function StudentDetailModal({ student, teacherName, payments, lessons, studentCredit, onClose }) {
     if (!student) return null;
     const studentPayments = (payments || []).filter(p => p.studentId === student.id).slice().sort((a, b) => b.date.localeCompare(a.date));
@@ -989,6 +1010,7 @@ function StudentDetailModal({ student, teacherName, payments, lessons, studentCr
             React.createElement(Row, { label: "Ders Günü", value: GUNLER[student.weeklyDayIndex] + ((student.weeklyDayIndex2 !== undefined && student.weeklyDayIndex2 !== null && student.weeklyDayIndex2 !== "") ? " + " + GUNLER[student.weeklyDayIndex2] : "") }),
             React.createElement(Row, { label: "Aidat", value: fmtTL(student.fee) }),
             React.createElement(Row, { label: "Kayıt Tarihi", value: fmtDateTR(student.registerDate) }),
+            React.createElement(Row, { label: "İlk Ders Tarihi", value: fmtDateTR(student.firstLessonDate || student.registerDate) }),
             React.createElement(Row, { label: "Durum", value: student.status === "aktif" ? "Aktif" : "Ayrıldı" + (student.leftDate ? " (" + fmtDateTR(student.leftDate) + ")" : "") }),
             React.createElement(Row, { label: "Son Ödeme Tarihi", value: lastPayment ? fmtDateTR(lastPayment.date) : "Ödeme yok" }),
             credit !== null && React.createElement(Row, { label: "Ders Hakkı (güncel)", value: credit < 0 ? Math.abs(credit) + " ders borçlu" : credit + " ders hakkı" }),
@@ -1003,7 +1025,7 @@ function StudentDetailModal({ student, teacherName, payments, lessons, studentCr
 
             React.createElement("div", { style: { borderTop: "1px solid " + C.line, paddingTop: 10 } },
                 React.createElement("div", { style: { color: C.inkSoft, fontWeight: 600, marginBottom: 8 } }, "Aktif Aidat & Güncel Katılım Durumu"),
-                history.length === 0 ? (React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, "Önceki aidat hakları tüketildi. Henüz yeni bir ders yapılmadı.")) : (
+                history.length === 0 ? (React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, "Önceki haklar tüketildi. Henüz yeni bir ders yapılmadı.")) : (
                     React.createElement("div", { className: "flex flex-wrap gap-1.5" },
                         history.map(l => React.createElement("span", { key: l.id, title: l.statusLabel },
                             React.createElement(Pill, { tone: l.tone }, fmtDateTR(l.date))))))))));
