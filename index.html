@@ -518,9 +518,8 @@ function App() {
     const teachers = useMemo(() => staff.filter(s => s.role === "ogretmen"), [staff]);
     useEffect(() => {
         if (!auth) return;
-        // Müdür rolüne de "odemeler" sekmesi tanımlandı
         const validTabs = auth.role === "kurucu" ? ["panel", "personel", "ogrenciler", "dersler", "odemeler", "hakedis", "giderler", "rapor"]
-            : auth.role === "mudur" ? ["panel", "personel", "ogrenciler", "dersler", "odemeler", "hakedis"]
+            : auth.role === "mudur" ? ["panel", "personel", "ogrenciler", "dersler", "odemeler", "hakedis", "giderler"]
                 : ["ogretmen-dersler", "ogretmen-hakedis"];
         if (!validTabs.includes(tab)) setTab(validTabs[0]);
     }, [auth]);
@@ -570,12 +569,12 @@ function App() {
     const TABS_KURUCU = [
         { k: "panel", t: "Panel" }, { k: "personel", t: "Personel" }, { k: "ogrenciler", t: "Öğrenciler" },
         { k: "dersler", t: "Ders Takvimi" }, { k: "odemeler", t: "Ödemeler" }, { k: "hakedis", t: "Hakedişler" },
-        { k: "giderler", t: "Giderler" }, { k: "rapor", t: "Kâr/Zarar" },
+        { k: "giderler", t: "Giderler & Harici Gelir" }, { k: "rapor", t: "Kâr/Zarar" },
     ];
-    // Müdürün menüsüne "Ödemeler" eklendi
     const TABS_MUDUR = [
         { k: "panel", t: "Panel" }, { k: "personel", t: "Personel" }, { k: "ogrenciler", t: "Öğrenciler" },
-        { k: "dersler", t: "Ders Takvimi" }, { k: "odemeler", t: "Ödemeler" }, { k: "hakedis", t: "Hakedişler" }
+        { k: "dersler", t: "Ders Takvimi" }, { k: "odemeler", t: "Ödemeler" }, { k: "hakedis", t: "Hakedişler" },
+        { k: "giderler", t: "Giderler & Harici Gelir" }
     ];
     const TABS_OGRETMEN = [{ k: "ogretmen-dersler", t: "Derslerim" }, { k: "ogretmen-hakedis", t: "Hakedişim" }];
     const tabs = role === "kurucu" ? TABS_KURUCU : role === "mudur" ? TABS_MUDUR : TABS_OGRETMEN;
@@ -606,13 +605,13 @@ function App() {
                 }, onClose: () => setShowChangeAdminPasscode(false) })),
             React.createElement("div", { className: "max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto pb-2" }, tabs.map(x => (React.createElement("button", { key: x.k, onClick: () => setTab(x.k), className: "text-sm whitespace-nowrap px-3 py-1.5", style: { borderRadius: "8px 8px 0 0", background: tab === x.k ? C.bg : "transparent", color: tab === x.k ? C.primary : "rgba(255,255,255,0.85)", fontWeight: tab === x.k ? 700 : 500, border: "none", cursor: "pointer" } }, x.t))))),
         React.createElement("main", { className: "max-w-6xl mx-auto px-4 py-6" },
-            tab === "panel" && React.createElement(PanelTab, { staff, students, lessons, payments, studentCredit, setStudents }),
+            tab === "panel" && React.createElement(PanelTab, { staff, students, lessons, payments, expenses, studentCredit, setStudents }),
             tab === "personel" && React.createElement(PersonelTab, { staff, setStaff, students }),
             tab === "ogrenciler" && React.createElement(OgrencilerTab, { students, setStudents, teachers, payments, setPayments, studentCredit, lessons, setLessons }),
             tab === "dersler" && React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, canMarkPas: true, payouts, setPayouts, payments }),
             tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit, staff, role }),
             tab === "hakedis" && React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts }),
-            tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses, payouts, teachers }),
+            tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses, payouts, teachers, role }),
             tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses }),
             tab === "ogretmen-dersler" && (activeTeacherId
                 ? React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId: activeTeacherId, canMarkPas: false, payouts, setPayouts, payments })
@@ -625,7 +624,7 @@ function App() {
 
 /* ---------------- Panel Tab ---------------- */
 const GUN_TR = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
-function PanelTab({ staff, students, lessons, payments, studentCredit, setStudents }) {
+function PanelTab({ staff, students, lessons, payments, expenses, studentCredit, setStudents }) {
     const aktifOgrenci = students.filter(s => s.status === "aktif");
     const borcluOgrenciler = aktifOgrenci.filter(s => studentCredit(s.id) < 0);
     const borcluSayisi = borcluOgrenciler.length;
@@ -645,6 +644,9 @@ function PanelTab({ staff, students, lessons, payments, studentCredit, setStuden
     const buAyGelir = buAyOdemeler.reduce((a, p) => a + Number(p.amount || 0), 0);
     const buAyNakit = buAyOdemeler.filter(p => p.method === "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
     const buAyHavale = buAyOdemeler.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
+
+    // Harici banka gelirleri
+    const buAyHariciGelir = (expenses || []).filter(e => e.type === "gelir" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
 
     const bugunGunAdi = GUN_TR[(new Date().getDay() + 6) % 7];
     const cifGunluOgrenciler = aktifOgrenci.filter(s => s.weeklyDayIndex2 !== undefined && s.weeklyDayIndex2 !== null && s.weeklyDayIndex2 !== "");
@@ -677,13 +679,14 @@ function PanelTab({ staff, students, lessons, payments, studentCredit, setStuden
             React.createElement("span", { style: { color: C.inkSoft } }, "·"),
             React.createElement("span", { style: { color: C.inkSoft } }, "EFT / Havale: ", React.createElement("strong", { style: { color: C.ink } }, fmtTL(buHaftaHavale)))),
         React.createElement("div", { className: "mt-3 pt-3", style: { borderTop: "1px solid " + C.line } },
-            React.createElement("h3", { className: "text-sm mb-1", style: { color: C.inkSoft } }, "Bu ayın toplam tahsilatı"),
+            React.createElement("h3", { className: "text-sm mb-1", style: { color: C.inkSoft } }, "Bu ayın toplam aidat tahsilatı"),
             React.createElement("div", { className: "text-xl", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buAyGelir)),
             React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, monthLabel(thisMonth)),
             React.createElement("div", { className: "flex gap-2 mt-2 pt-2 text-xs", style: { borderTop: "1px dashed " + C.line } },
                 React.createElement("span", { style: { color: C.inkSoft } }, "Elden (Nakit): ", React.createElement("strong", { style: { color: C.ink } }, fmtTL(buAyNakit))),
                 React.createElement("span", { style: { color: C.inkSoft } }, "·"),
-                React.createElement("span", { style: { color: C.inkSoft } }, "EFT / Havale: ", React.createElement("strong", { style: { color: C.ink } }, fmtTL(buAyHavale))))));
+                React.createElement("span", { style: { color: C.inkSoft } }, "EFT / Havale: ", React.createElement("strong", { style: { color: C.ink } }, fmtTL(buAyHavale)))),
+            buAyHariciGelir > 0 && React.createElement("div", { className: "mt-2 pt-1 text-xs", style: { color: C.success } }, `+ ${fmtTL(buAyHariciGelir)} Harici Banka Geliri`)));
                 
     const borcluListItems = borcluOgrenciler.slice(0, 6).map(s => React.createElement("li", { key: s.id, className: "flex justify-between items-center gap-2" },
         React.createElement("span", null, s.name),
@@ -1245,40 +1248,33 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                 React.createElement("button", { style: btnStyle("primary"), onClick: () => setShowPasWarning(false) }, "Tamam"))))));
 }
 
-/* ---------------- Ödemeler Tab (Müdür Kısıtlaması Eklendi) ---------------- */
+/* ---------------- Ödemeler Tab (Müdüre EFT/Havale Yetkisi Verildi) ---------------- */
 function OdemelerTab({ students, payments, setPayments, studentCredit, staff, role }) {
     const [studentId, setStudentId] = useState("");
     const [amount, setAmount] = useState("");
-    // Müdür ise varsayılan ve zorunlu nakit, kurucu ise havale
-    const [method, setMethod] = useState(role === "mudur" ? "nakit" : "havale");
+    const [method, setMethod] = useState("havale"); // Hem kurucu hem müdür havale/nakit seçebilir
     const [date, setDate] = useState(toISODate(new Date()));
     const [justAdded, setJustAdded] = useState(null);
     const aktif = students.filter(s => s.status === "aktif");
     const sahipler = (staff || []).filter(s => s.role === "sahip" && s.phone);
 
-    useEffect(() => {
-        if (role === "mudur") setMethod("nakit");
-    }, [role]);
-
     useEffect(() => { const st = aktif.find(s => s.id === studentId); if (st) setAmount(st.fee); }, [studentId]);
 
     function addPayment() {
         if (!studentId || !amount) return;
-        // Müdür ise her halükarda nakit olarak kaydet
-        const finalMethod = role === "mudur" ? "nakit" : method;
         setPayments([...payments, { 
             id: uid("ode"), 
             studentId, 
             amount: Number(amount), 
-            method: finalMethod,
+            method: method || "havale",
             date, 
-            note: finalMethod === "nakit" ? "Elden (Nakit)" : "EFT / Havale" 
+            note: method === "nakit" ? "Elden (Nakit)" : "EFT / Havale" 
         }]);
         const st = students.find(s => s.id === studentId);
         setJustAdded({ 
             studentName: st ? st.name : "—", 
             amount: Number(amount), 
-            method: finalMethod === "nakit" ? "Elden (Nakit)" : "EFT / Havale",
+            method: method === "nakit" ? "Elden (Nakit)" : "EFT / Havale",
             date 
         });
         setStudentId(""); setAmount(""); setDate(toISODate(new Date()));
@@ -1316,21 +1312,14 @@ function OdemelerTab({ students, payments, setPayments, studentCredit, staff, ro
                     React.createElement("input", { style: inputStyle, type: "number", value: amount, onChange: e => setAmount(e.target.value) })),
                 React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Ödeme Yolu"),
-                    React.createElement("select", { 
-                        style: Object.assign(Object.assign({}, inputStyle), role === "mudur" ? { background: "#F3EFE6", cursor: "not-allowed" } : {}), 
-                        value: role === "mudur" ? "nakit" : method, 
-                        disabled: role === "mudur",
-                        onChange: e => setMethod(e.target.value) 
-                    },
-                        role !== "mudur" && React.createElement("option", { value: "havale" }, "EFT / Havale"),
-                        React.createElement("option", { value: "nakit" }, "Elden (Nakit)"),
-                        role === "mudur" && React.createElement("option", { value: "havale", disabled: true }, "EFT / Havale (Yetki Yok)"))),
+                    React.createElement("select", { style: inputStyle, value: method, onChange: e => setMethod(e.target.value) },
+                        React.createElement("option", { value: "havale" }, "EFT / Havale"),
+                        React.createElement("option", { value: "nakit" }, "Elden (Nakit)"))),
                 React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Tarih"),
                     React.createElement("input", { style: inputStyle, type: "date", value: date, onChange: e => setDate(e.target.value) })),
                 React.createElement("button", { style: btnStyle("primary"), onClick: addPayment }, "Ödemeyi Kaydet")),
             studentId && React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, "Mevcut ders hakkı: " + studentCredit(studentId)),
-            role === "mudur" && React.createElement("p", { className: "text-xs mt-1", style: { color: C.accent } }, "* Kurum müdürü yalnızca Elden (Nakit) ödeme alma ve kaydetme yetkisine sahiptir."),
             justAdded && React.createElement("div", { className: "mt-4 pt-3", style: { borderTop: "1px solid " + C.line } },
                 React.createElement("p", { className: "text-sm mb-2" }, "Ödeme kaydedildi. Kurs sahibine bildirin:"),
                 React.createElement("div", { className: "flex gap-2 flex-wrap" }, sahipler.map(s => React.createElement(WaButton, { key: s.id, phone: s.phone, message: paymentMsg(justAdded), label: s.name + "'a Bildir" }))))),
@@ -1487,34 +1476,77 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
         })))));
 }
 
-/* ---------------- Giderler Tab ---------------- */
-function GiderlerTab({ expenses, setExpenses, payouts, teachers }) {
+/* ---------------- Giderler Tab (Harici Banka Geliri Girişi Eklendi) ---------------- */
+function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
+    // Yeni Gider state
     const [desc, setDesc] = useState("");
     const [amount, setAmount] = useState("");
     const [date, setDate] = useState(toISODate(new Date()));
 
-    function add() {
+    // Harici Gelir state
+    const [incomeDesc, setIncomeDesc] = useState("");
+    const [incomeAmount, setIncomeAmount] = useState("");
+    const [incomeDate, setIncomeDate] = useState(toISODate(new Date()));
+
+    function addExpense() {
         if (!desc.trim() || !amount) return;
-        setExpenses([...expenses, { id: uid("gid"), description: desc, amount: Number(amount), date }]);
+        setExpenses([...expenses, { id: uid("gid"), type: "gider", description: desc, amount: Number(amount), date }]);
         setDesc(""); setAmount("");
     }
-    function remove(id) { setExpenses(expenses.filter(e => e.id !== id)); }
+
+    function addIncome() {
+        if (!incomeDesc.trim() || !incomeAmount) return;
+        setExpenses([...expenses, { id: uid("gel"), type: "gelir", description: incomeDesc, amount: Number(incomeAmount), date: incomeDate }]);
+        setIncomeDesc(""); setIncomeAmount("");
+    }
+
+    function remove(id) { 
+        if (confirm("Bu kaydı silmek istediğinize emin misiniz?")) {
+            setExpenses(expenses.filter(e => e.id !== id)); 
+        }
+    }
 
     const payoutRows = (payouts || []).filter(p => p.paid && p.paidDate).map(p => {
         const tc = (teachers || []).find(t => t.id === p.teacherId);
-        return { id: "payout-" + p.id, description: "Öğretmen Hakedişi — " + (tc ? tc.name : "—"), amount: p.amount, date: p.paidDate, isPayout: true };
+        return { id: "payout-" + p.id, type: "gider", description: "Öğretmen Hakedişi — " + (tc ? tc.name : "—"), amount: p.amount, date: p.paidDate, isPayout: true };
     });
-    const sorted = expenses.slice().concat(payoutRows).sort((a, b) => b.date.localeCompare(a.date));
+
+    const normalizedExpenses = (expenses || []).map(e => Object.assign({ type: e.type || "gider" }, e));
+    const sorted = normalizedExpenses.slice().concat(payoutRows).sort((a, b) => b.date.localeCompare(a.date));
     const thisMonth = monthKeyOf(date || toISODate(new Date()));
-    const buAyGiderToplam = sorted.filter(e => monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
+    
+    const buAyGiderToplam = sorted.filter(e => e.type !== "gelir" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
+    const buAyHariciGelirToplam = sorted.filter(e => e.type === "gelir" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
 
     return (React.createElement("div", null,
-        React.createElement(SectionTitle, { eyebrow: "Kurucu Girişi", title: "Giderler" }),
-        React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20 }) },
-            React.createElement("h3", { className: "text-lg mb-3", style: displayFont }, "Yeni Gider"),
+        React.createElement(SectionTitle, { eyebrow: "Finans", title: "Giderler & Harici Gelirler" }),
+
+        // Harici Gelir Ekleme Bölümü (Banka eşleşmesi için)
+        React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20, borderLeft: "4px solid " + C.success }) },
+            React.createElement("div", { className: "flex justify-between items-center flex-wrap gap-2 mb-2" },
+                React.createElement("h3", { className: "text-lg", style: displayFont }, "Harici Gelir Ekle"),
+                React.createElement("span", { className: "text-xs font-semibold px-2 py-1", style: { background: C.successBg, color: C.success, borderRadius: 6 } }, "Banka Hesabı Eşleşmesi")),
+            React.createElement("p", { className: "text-xs mb-3 font-medium", style: { color: C.inkSoft } }, "banka hesabıyla eşleşmesi için miktar ekle"),
             React.createElement("div", { className: "grid md:grid-cols-4 gap-3 items-end" },
                 React.createElement("div", { className: "md:col-span-2" },
-                    React.createElement("label", { style: labelStyle }, "Açıklama"),
+                    React.createElement("label", { style: labelStyle }, "Gelir Açıklaması"),
+                    React.createElement("input", { style: inputStyle, type: "text", value: incomeDesc, onChange: e => setIncomeDesc(e.target.value), placeholder: "Örn: Faiz, iade, harici havale…" })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Tutar (₺)"),
+                    React.createElement("input", { style: inputStyle, type: "number", value: incomeAmount, onChange: e => setIncomeAmount(e.target.value) })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Tarih"),
+                    React.createElement("input", { style: inputStyle, type: "date", value: incomeDate, onChange: e => setIncomeDate(e.target.value) }))),
+            React.createElement("div", { className: "flex justify-between items-center mt-3 pt-3", style: { borderTop: "1px dashed " + C.line } },
+                React.createElement("span", { className: "text-xs", style: { color: C.inkSoft } }, `Bu ayki toplam harici banka geliri: ${fmtTL(buAyHariciGelirToplam)}`),
+                React.createElement("button", { style: btnStyle("success"), onClick: addIncome }, "+ Harici Geliri Kaydet"))),
+
+        // Gider Girişi
+        React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20 }) },
+            React.createElement("h3", { className: "text-lg mb-3", style: displayFont }, "Yeni Gider Girişi"),
+            React.createElement("div", { className: "grid md:grid-cols-4 gap-3 items-end" },
+                React.createElement("div", { className: "md:col-span-2" },
+                    React.createElement("label", { style: labelStyle }, "Gider Açıklaması"),
                     React.createElement("input", { style: inputStyle, type: "text", value: desc, onChange: e => setDesc(e.target.value), placeholder: "Kira, fatura, malzeme…" })),
                 React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Tutar (₺)"),
@@ -1523,24 +1555,31 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers }) {
                     React.createElement("label", { style: labelStyle }, "Tarih"),
                     React.createElement("input", { style: inputStyle, type: "date", value: date, onChange: e => setDate(e.target.value) }))),
             React.createElement("div", { className: "flex justify-end mt-3" },
-                React.createElement("button", { style: btnStyle("primary"), onClick: add }, "Gideri Kaydet")),
+                React.createElement("button", { style: btnStyle("primary"), onClick: addExpense }, "Gideri Kaydet")),
             React.createElement("div", { className: "flex justify-between items-center mt-3 pt-3", style: { borderTop: "1px solid " + C.line } },
                 React.createElement("span", { className: "text-sm", style: { color: C.inkSoft } }, monthLabel(thisMonth) + " toplam gideri"),
                 React.createElement("span", { className: "text-lg", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buAyGiderToplam)))),
-        sorted.length === 0 ? React.createElement(EmptyState, { text: "Henüz gider kaydı yok." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
+
+        // Kayıt Listesi
+        sorted.length === 0 ? React.createElement(EmptyState, { text: "Henüz işlem kaydı yok." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
             React.createElement("table", { className: "w-full" },
                 React.createElement("thead", null,
                     React.createElement("tr", null,
                         React.createElement(Th, null, "Tarih"),
+                        React.createElement(Th, null, "Tür"),
                         React.createElement(Th, null, "Açıklama"),
                         React.createElement(Th, null, "Tutar"),
                         React.createElement(Th, null))),
                 React.createElement("tbody", null, sorted.map(e => (React.createElement("tr", { key: e.id },
                     React.createElement(Td, { style: monoFont }, fmtDateTR(e.date)),
+                    React.createElement(Td, null, e.type === "gelir" 
+                        ? React.createElement(Pill, { tone: "success" }, "Harici Gelir")
+                        : (e.isPayout ? React.createElement(Pill, { tone: "warning" }, "Hakediş") : React.createElement(Pill, { tone: "danger" }, "Gider"))),
                     React.createElement(Td, null, e.description),
-                    React.createElement(Td, { style: monoFont }, fmtTL(e.amount)),
+                    React.createElement(Td, { style: Object.assign(Object.assign({}, monoFont), { color: e.type === "gelir" ? C.success : C.ink, fontWeight: 600 }) }, 
+                        (e.type === "gelir" ? "+ " : "− ") + fmtTL(e.amount)),
                     React.createElement(Td, { className: "text-right" }, e.isPayout
-                        ? React.createElement(Pill, { tone: "warning" }, "Hakediş")
+                        ? null
                         : React.createElement("button", { style: btnStyle("danger"), onClick: () => remove(e.id) }, "Sil")))))))))));
 }
 
@@ -1563,11 +1602,16 @@ function RaporTab({ payments, payouts, expenses }) {
     const gelirNakit = ayOdemeleri.filter(p => p.method === "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
     const gelirHavale = ayOdemeleri.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
 
+    // Harici banka gelirleri
+    const hariciGelirler = (expenses || []).filter(e => e.type === "gelir" && monthKeyOf(e.date) === month);
+    const toplamHariciGelir = hariciGelirler.reduce((a, e) => a + Number(e.amount || 0), 0);
+
     const ogretmenOdeme = payouts.filter(p => p.paid && p.paidDate && monthKeyOf(p.paidDate) === month).reduce((a, p) => a + Number(p.amount || 0), 0);
-    const digerGider = expenses.filter(e => monthKeyOf(e.date) === month).reduce((a, e) => a + Number(e.amount || 0), 0);
+    const digerGider = (expenses || []).filter(e => e.type !== "gelir" && monthKeyOf(e.date) === month).reduce((a, e) => a + Number(e.amount || 0), 0);
     
-    // Kasa tutarı
-    const kasaTutari = gelir - (ogretmenOdeme + digerGider);
+    // Kasa tutarı (Aidat Geliri + Harici Gelir - Öğretmen Hakedişi - Giderler)
+    const toplamGelir = gelir + toplamHariciGelir;
+    const kasaTutari = toplamGelir - (ogretmenOdeme + digerGider);
 
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Aylık Özet", title: "Kasa & Finansal Rapor", action: React.createElement("select", { style: Object.assign(Object.assign({}, inputStyle), { width: "auto" }), value: month, onChange: e => setMonth(e.target.value) }, months.map(m => React.createElement("option", { key: m, value: m }, monthLabel(m)))) }),
@@ -1577,8 +1621,15 @@ function RaporTab({ payments, payouts, expenses }) {
                 value: fmtTL(gelir), 
                 subtitle: `Nakit: ${fmtTL(gelirNakit)} | Banka: ${fmtTL(gelirHavale)}` 
             }),
-            React.createElement(StatCard, { label: "Öğretmen Ödemeleri", value: fmtTL(ogretmenOdeme) }),
-            React.createElement(StatCard, { label: "Diğer Giderler", value: fmtTL(digerGider) }),
+            React.createElement(StatCard, { 
+                label: "Harici Gelirler", 
+                value: fmtTL(toplamHariciGelir),
+                subtitle: "Banka eşleşmeli gelirler"
+            }),
+            React.createElement(StatCard, { 
+                label: "Öğretmen Ödemeleri", 
+                value: fmtTL(ogretmenOdeme) 
+            }),
             React.createElement(StatCard, { 
                 label: "KASA TUTARI", 
                 value: fmtTL(Math.abs(kasaTutari)), 
@@ -1594,6 +1645,11 @@ function RaporTab({ payments, payouts, expenses }) {
                             React.createElement("div", { className: "font-medium" }, "Öğrenci aidat gelirleri"),
                             React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, `Elden (Nakit): ${fmtTL(gelirNakit)} | EFT/Havale: ${fmtTL(gelirHavale)}`)),
                         React.createElement(Td, { className: "text-right", style: monoFont }, fmtTL(gelir))),
+                    toplamHariciGelir > 0 && React.createElement("tr", null,
+                        React.createElement(Td, null, 
+                            React.createElement("div", { className: "font-medium", style: { color: C.success } }, "Harici banka gelirleri"),
+                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, "Banka hesabıyla eşleşen ek girdiler")),
+                        React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.success }) }, "+ " + fmtTL(toplamHariciGelir))),
                     React.createElement("tr", null,
                         React.createElement(Td, null, "Öğretmen hakediş ödemeleri"),
                         React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.danger }) }, "− " + fmtTL(ogretmenOdeme))),
