@@ -622,7 +622,7 @@ function App() {
         React.createElement("footer", { className: "text-center text-xs py-8", style: { color: C.inkSoft } }, "Veriler gerçek zamanlı olarak ortak veritabanında saklanır — tüm cihazlarda anında senkronize olur.")));
 }
 
-/* ---------------- Panel Tab ---------------- */
+/* ---------------- Panel Tab (TÜM Borçlu Öğrenciler Listelenir) ---------------- */
 const GUN_TR = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
 function PanelTab({ staff, students, lessons, payments, expenses, studentCredit, setStudents }) {
     const aktifOgrenci = students.filter(s => s.status === "aktif");
@@ -688,16 +688,21 @@ function PanelTab({ staff, students, lessons, payments, expenses, studentCredit,
                 React.createElement("span", { style: { color: C.inkSoft } }, "EFT / Havale: ", React.createElement("strong", { style: { color: C.ink } }, fmtTL(buAyHavale)))),
             buAyHariciGelir > 0 && React.createElement("div", { className: "mt-2 pt-1 text-xs", style: { color: C.success } }, `+ ${fmtTL(buAyHariciGelir)} Harici Banka Geliri`)));
                 
-    const borcluListItems = borcluOgrenciler.slice(0, 6).map(s => React.createElement("li", { key: s.id, className: "flex justify-between items-center gap-2" },
-        React.createElement("span", null, s.name),
+    // .slice(0, 6) kaldırıldı -> tüm borçlu öğrenciler eksiksiz listelenir
+    const borcluListItems = borcluOgrenciler.map(s => React.createElement("li", { key: s.id, className: "flex justify-between items-center gap-2 py-1", style: { borderBottom: "1px solid " + C.line } },
+        React.createElement("span", { className: "font-medium" }, s.name),
         React.createElement("div", { className: "flex items-center gap-2" },
             React.createElement(Pill, { tone: "danger" }, Math.abs(studentCredit(s.id)) + " ders borçlu"),
             React.createElement(WaButton, { phone: s.phone, label: "Hatırlat", message: aidatHatirlatMsg(s.name, studentCredit(s.id)) }))));
+
     const borcluBody = borcluSayisi === 0
         ? React.createElement("p", { className: "text-sm", style: { color: C.inkSoft } }, "Şu anda borçlu öğrenci yok.")
-        : React.createElement("ul", { className: "text-sm space-y-2" }, borcluListItems);
+        : React.createElement("ul", { className: "text-sm space-y-1 overflow-y-auto pr-1", style: { maxHeight: 280 } }, borcluListItems);
+
     const borcluCard = React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
-        React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Borçlu öğrenciler"),
+        React.createElement("div", { className: "flex justify-between items-center mb-2" },
+            React.createElement("h3", { className: "text-lg", style: displayFont }, "Borçlu öğrenciler"),
+            borcluSayisi > 0 && React.createElement(Pill, { tone: "danger" }, borcluSayisi + " Öğrenci")),
         borcluBody);
     const twoColRow = React.createElement("div", { key: "twocol", className: "grid md:grid-cols-2 gap-4" }, gelirCard, borcluCard);
 
@@ -1248,11 +1253,11 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                 React.createElement("button", { style: btnStyle("primary"), onClick: () => setShowPasWarning(false) }, "Tamam"))))));
 }
 
-/* ---------------- Ödemeler Tab (Müdüre EFT/Havale Yetkisi Verildi) ---------------- */
+/* ---------------- Ödemeler Tab ---------------- */
 function OdemelerTab({ students, payments, setPayments, studentCredit, staff, role }) {
     const [studentId, setStudentId] = useState("");
     const [amount, setAmount] = useState("");
-    const [method, setMethod] = useState("havale"); // Hem kurucu hem müdür havale/nakit seçebilir
+    const [method, setMethod] = useState("havale");
     const [date, setDate] = useState(toISODate(new Date()));
     const [justAdded, setJustAdded] = useState(null);
     const aktif = students.filter(s => s.status === "aktif");
@@ -1476,14 +1481,12 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
         })))));
 }
 
-/* ---------------- Giderler Tab (Harici Banka Geliri Girişi Eklendi) ---------------- */
+/* ---------------- Giderler Tab ---------------- */
 function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
-    // Yeni Gider state
     const [desc, setDesc] = useState("");
     const [amount, setAmount] = useState("");
     const [date, setDate] = useState(toISODate(new Date()));
 
-    // Harici Gelir state
     const [incomeDesc, setIncomeDesc] = useState("");
     const [incomeAmount, setIncomeAmount] = useState("");
     const [incomeDate, setIncomeDate] = useState(toISODate(new Date()));
@@ -1521,7 +1524,7 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Finans", title: "Giderler & Harici Gelirler" }),
 
-        // Harici Gelir Ekleme Bölümü (Banka eşleşmesi için)
+        // Harici Gelir Ekleme Bölümü
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20, borderLeft: "4px solid " + C.success }) },
             React.createElement("div", { className: "flex justify-between items-center flex-wrap gap-2 mb-2" },
                 React.createElement("h3", { className: "text-lg", style: displayFont }, "Harici Gelir Ekle"),
@@ -1602,14 +1605,12 @@ function RaporTab({ payments, payouts, expenses }) {
     const gelirNakit = ayOdemeleri.filter(p => p.method === "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
     const gelirHavale = ayOdemeleri.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
 
-    // Harici banka gelirleri
     const hariciGelirler = (expenses || []).filter(e => e.type === "gelir" && monthKeyOf(e.date) === month);
     const toplamHariciGelir = hariciGelirler.reduce((a, e) => a + Number(e.amount || 0), 0);
 
     const ogretmenOdeme = payouts.filter(p => p.paid && p.paidDate && monthKeyOf(p.paidDate) === month).reduce((a, p) => a + Number(p.amount || 0), 0);
     const digerGider = (expenses || []).filter(e => e.type !== "gelir" && monthKeyOf(e.date) === month).reduce((a, e) => a + Number(e.amount || 0), 0);
     
-    // Kasa tutarı (Aidat Geliri + Harici Gelir - Öğretmen Hakedişi - Giderler)
     const toplamGelir = gelir + toplamHariciGelir;
     const kasaTutari = toplamGelir - (ogretmenOdeme + digerGider);
 
