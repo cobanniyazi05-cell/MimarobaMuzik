@@ -20,7 +20,6 @@
   ::-webkit-scrollbar-thumb{background:#D8D0C0; border-radius:4px;}
   input:focus, select:focus, textarea:focus, button:focus-visible{ outline: 2px solid #C79A2B; outline-offset: 1px; }
 
-  /* Yardımcı CSS sınıfları */
   .fixed{position:fixed;} .sticky{position:sticky;} .inset-0{top:0;right:0;bottom:0;left:0;}
   .top-0{top:0;} .z-30{z-index:30;} .z-50{z-index:50;}
   .flex{display:flex;} .grid{display:grid;} .inline-block{display:inline-block;} .hidden{display:none;}
@@ -73,34 +72,7 @@
 
 <script>
 "use strict";
-const { useState, useEffect, useMemo, useCallback, useRef, Component } = React;
-
-/* ---------------- Hata Yakalayıcı (Beyaz Ekranı Önler) ---------------- */
-class ErrorBoundary extends Component {
-    constructor(props) {
-        super(props);
-        this.state = { hasError: false, error: null };
-    }
-    static getDerivedStateFromError(error) {
-        return { hasError: true, error };
-    }
-    componentDidCatch(error, errorInfo) {
-        console.error("Uygulama çalışma hatası:", error, errorInfo);
-    }
-    render() {
-        if (this.state.hasError) {
-            return React.createElement("div", { style: { padding: 30, textAlign: "center", fontFamily: "system-ui, sans-serif" } },
-                React.createElement("h2", { style: { color: "#B54C3C" } }, "Sistem Başlatılırken Bir Sorun Oluştu"),
-                React.createElement("p", { style: { color: "#6B6478", fontSize: 14 } }, String(this.state.error && this.state.error.message ? this.state.error.message : this.state.error)),
-                React.createElement("button", { 
-                    style: { background: "#453A67", color: "white", padding: "10px 18px", border: "none", borderRadius: 8, cursor: "pointer", marginTop: 16, fontWeight: 600 },
-                    onClick: () => { localStorage.removeItem("mimaroba-auth-v1"); window.location.reload(); }
-                }, "Yeniden Başlat (Giriş Ekranına Dön)")
-            );
-        }
-        return this.props.children;
-    }
-}
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
 /* ---------------- Firebase başlatma ---------------- */
 let app, db, auth, firebaseReady = false, firebaseError = null;
@@ -116,90 +88,52 @@ catch (e) {
     firebaseError = e;
 }
 
-/* ---------------- Güçlendirilmiş Yardımcı Fonksiyonlar ---------------- */
+/* ---------------- Yardımcı Fonksiyonlar ---------------- */
 const uid = (p = "id") => p + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const GUNLER = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
 const ENSTRUMANLAR = ["Piyano", "Gitar", "Bateri", "Keman", "Bas Gitar", "Yan Flüt", "Vokal", "Ukulele", "Saksafon", "Bağlama", "Ritim", "Solfej"];
 function pad(n) { return n < 10 ? "0" + n : "" + n; }
-
-function toISODate(d) {
-    if (!d || !(d instanceof Date) || isNaN(d.getTime())) d = new Date();
-    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
-}
-
-function fromISODate(s) {
-    if (!s || typeof s !== "string") return new Date();
-    const parts = s.split("-").map(Number);
-    if (parts.length < 3 || isNaN(parts[0])) return new Date();
-    return new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
-}
-
-function addDays(iso, n) {
-    const d = fromISODate(iso);
-    d.setDate(d.getDate() + n);
-    return toISODate(d);
-}
-
+function toISODate(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+function fromISODate(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+function addDays(iso, n) { const d = fromISODate(iso); d.setDate(d.getDate() + n); return toISODate(d); }
 function fmtTL(n) { return (Math.round(n || 0)).toLocaleString("tr-TR") + " ₺"; }
-
-function fmtDateTR(iso) {
-    if (!iso || typeof iso !== "string") return "—";
-    const d = fromISODate(iso);
-    if (isNaN(d.getTime())) return "—";
-    return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear();
-}
-
-function safeStr(val) { return val === null || val === undefined ? "" : String(val); }
+function fmtDateTR(iso) { if (!iso) return "—"; const d = fromISODate(iso); return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear(); }
 
 function isDepartedLesson(lesson, student) {
-    return !!(student && student.status === "ayrildi" && student.leftDate && lesson && lesson.date && lesson.date >= student.leftDate);
+    return !!(student && student.status === "ayrildi" && student.leftDate && lesson.date >= student.leftDate);
 }
-
 function getMonday(d) {
     const date = new Date(d);
-    if (isNaN(date.getTime())) return new Date();
     const day = date.getDay();
     const diff = (day === 0 ? -6 : 1 - day);
     date.setDate(date.getDate() + diff);
     date.setHours(0, 0, 0, 0);
     return date;
 }
-
 function weekKeyOf(date) { return toISODate(getMonday(date)); }
-
 function weekRangeLabel(weekKey) {
     const monday = fromISODate(weekKey);
     const sunday = new Date(monday);
     sunday.setDate(sunday.getDate() + 6);
     return fmtDateTR(toISODate(monday)) + " – " + fmtDateTR(toISODate(sunday));
 }
-
 function dateForWeekday(weekKey, gunIndex) {
     const monday = fromISODate(weekKey);
     const d = new Date(monday);
     d.setDate(d.getDate() + gunIndex);
     return toISODate(d);
 }
-
 function currentWeekKey() { return weekKeyOf(new Date()); }
-
 function shiftWeekKey(weekKey, delta) {
     const monday = fromISODate(weekKey);
     monday.setDate(monday.getDate() + delta * 7);
     return toISODate(monday);
 }
-
-function monthKeyOf(iso) {
-    if (!iso || typeof iso !== "string") return "";
-    return iso.slice(0, 7);
-}
-
+function monthKeyOf(iso) { return iso.slice(0, 7); }
 function monthLabel(mk) {
-    if (!mk || typeof mk !== "string") return "—";
-    const parts = mk.split("-").map(Number);
-    if (parts.length < 2 || isNaN(parts[1])) return mk;
+    const [y, m] = mk.split("-").map(Number);
     const ay = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
-    return (ay[parts[1] - 1] || "") + " " + parts[0];
+    return ay[m - 1] + " " + y;
 }
 
 function normalizePhoneTR(phone) {
@@ -210,19 +144,16 @@ function normalizePhoneTR(phone) {
     else if (digits.length === 10) digits = "90" + digits;
     return digits;
 }
-
 function waLink(phone, message) {
     const digits = normalizePhoneTR(phone);
     if (!digits) return null;
     return "https://wa.me/" + digits + "?text=" + encodeURIComponent(message);
 }
-
 function WaButton({ phone, message, label, kind }) {
     const link = waLink(phone, message);
     if (!link) return React.createElement("span", { className: "text-xs", style: { color: C.inkSoft } }, "Telefon yok");
     return React.createElement("a", { href: link, target: "_blank", rel: "noopener noreferrer", style: Object.assign(Object.assign({}, btnStyle(kind || "success")), { textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }) }, label || "WhatsApp'ta Gönder");
 }
-
 function aidatHatirlatMsg(studentName, credit) {
     const intro = "Merhaba, Mimaroba Müzik Kursu mesajıdır. " + studentName + " adlı öğrencimizin ";
     const outro = " Mutlu ve müzikli günler dileriz.";
@@ -347,32 +278,6 @@ function EmptyState({ text }) { return React.createElement("div", { className: "
 function Th({ children }) { return React.createElement("th", { className: "text-left", style: { fontSize: 12, textTransform: "uppercase", letterSpacing: "0.04em", color: C.inkSoft, fontWeight: 600, padding: "8px 10px", borderBottom: "1px solid " + C.line } }, children); }
 function Td({ children, className, style }) { return React.createElement("td", { className: className, style: Object.assign({ padding: 10, borderBottom: "1px solid " + C.line, fontSize: 14, verticalAlign: "middle" }, style) }, children); }
 
-/* ---------------- Güvenli Döngü Çözücüler ---------------- */
-function chainRootOf(l, byId) {
-    let current = l;
-    const visited = new Set();
-    while (current && current.isTelafi && current.linkedTo && byId[current.linkedTo]) {
-        if (visited.has(current.id)) break;
-        visited.add(current.id);
-        current = byId[current.linkedTo];
-    }
-    return current || l;
-}
-
-function buildChain(l, telafiByOriginal) {
-    const chain = [l];
-    let current = l;
-    const visited = new Set([l.id]);
-    while (current && telafiByOriginal[current.id]) {
-        const next = telafiByOriginal[current.id];
-        if (!next || visited.has(next.id)) break;
-        visited.add(next.id);
-        chain.push(next);
-        current = next;
-    }
-    return chain;
-}
-
 /* ---------------- Aktif Aidat Döngüsü & Renk Hesaplama ---------------- */
 function calculateStudentLessonHistory(student, payments, lessons) {
     if (!student) return [];
@@ -391,7 +296,7 @@ function calculateStudentLessonHistory(student, payments, lessons) {
 
     const validLessons = (lessons || [])
         .filter(l => l.studentId === student.id && (l.status === "yapildi" || l.status === "mazeretsiz"))
-        .slice().sort((a, b) => safeStr(a.date).localeCompare(safeStr(b.date)));
+        .slice().sort((a, b) => a.date.localeCompare(b.date));
 
     let usedCount = 0;
     const result = [];
@@ -715,21 +620,21 @@ function PanelTab({ staff, students, lessons, payments, expenses, studentCredit,
     const borcluOgrenciler = aktifOgrenci.filter(s => studentCredit(s.id) < 0);
     const borcluSayisi = borcluOgrenciler.length;
     const bugun = toISODate(new Date());
-    const bugunkuDersler = lessons.filter(l => l && l.date === bugun && !isDepartedLesson(l, students.find(s => s.id === l.studentId)));
+    const bugunkuDersler = lessons.filter(l => l.date === bugun && !isDepartedLesson(l, students.find(s => s.id === l.studentId)));
     
     const thisWeek = currentWeekKey();
-    const buHaftaOdemeler = payments.filter(p => p && p.date && weekKeyOf(fromISODate(p.date)) === thisWeek);
+    const buHaftaOdemeler = payments.filter(p => weekKeyOf(fromISODate(p.date)) === thisWeek);
     const buHaftaGelir = buHaftaOdemeler.reduce((a, p) => a + Number(p.amount || 0), 0);
     const buHaftaNakit = buHaftaOdemeler.filter(p => p.method === "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
     const buHaftaHavale = buHaftaOdemeler.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
 
     const thisMonth = monthKeyOf(bugun);
-    const buAyOdemeler = payments.filter(p => p && p.date && monthKeyOf(p.date) === thisMonth);
+    const buAyOdemeler = payments.filter(p => monthKeyOf(p.date) === thisMonth);
     const buAyGelir = buAyOdemeler.reduce((a, p) => a + Number(p.amount || 0), 0);
     const buAyNakit = buAyOdemeler.filter(p => p.method === "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
     const buAyHavale = buAyOdemeler.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
 
-    const buAyHariciGelir = (expenses || []).filter(e => e && e.type === "gelir" && e.date && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
+    const buAyHariciGelir = (expenses || []).filter(e => e.type === "gelir" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
 
     const bugunGunAdi = GUN_TR[(new Date().getDay() + 6) % 7];
     const cifGunluOgrenciler = aktifOgrenci.filter(s => s.weeklyDayIndex2 !== undefined && s.weeklyDayIndex2 !== null && s.weeklyDayIndex2 !== "");
@@ -769,7 +674,7 @@ function PanelTab({ staff, students, lessons, payments, expenses, studentCredit,
                 React.createElement("span", { style: { color: C.inkSoft } }, "Elden (Nakit): ", React.createElement("strong", { style: { color: C.ink } }, fmtTL(buAyNakit))),
                 React.createElement("span", { style: { color: C.inkSoft } }, "·"),
                 React.createElement("span", { style: { color: C.inkSoft } }, "EFT / Havale: ", React.createElement("strong", { style: { color: C.ink } }, fmtTL(buAyHavale)))),
-            buAyHariciGelir > 0 && React.createElement("div", { className: "mt-2 pt-1 text-xs", style: { color: C.success } }, `+ ${fmtTL(buAyHariciGelir)} Harici Banka Geliri`)));
+            buAyHariciGelir > 0 && React.createElement("div", { className: "mt-2 pt-1 text-xs", style: { color: C.success } }, "+ " + fmtTL(buAyHariciGelir) + " Harici Banka Geliri")));
                 
     const borcluListItems = borcluOgrenciler.map(s => React.createElement("li", { key: s.id, className: "flex justify-between items-center gap-2 py-1", style: { borderBottom: "1px solid " + C.line } },
         React.createElement("span", { className: "font-medium" }, s.name),
@@ -945,7 +850,7 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                         if (l.studentId !== editing) return true;
                         if (l.isTelafi) return true;
                         if (l.status !== "bekliyor") return true;
-                        if (l.date && l.date < normalizedFirstLesson) return false;
+                        if (l.date < normalizedFirstLesson) return false;
                         const haftaGunIndex = (fromISODate(l.date).getDay() + 6) % 7;
                         return newDays.includes(haftaGunIndex);
                     });
@@ -987,14 +892,14 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
 
     const filtered = students
         .filter(s => filter === "tumu" ? true : s.status === filter)
-        .filter(s => search.trim() === "" ? true : safeStr(s.name).toLowerCase().includes(search.trim().toLowerCase()))
+        .filter(s => search.trim() === "" ? true : s.name.toLowerCase().includes(search.trim().toLowerCase()))
         .slice()
         .sort((a, b) => {
-            const tA = safeStr(teacherName(a.teacherId)).toLocaleLowerCase("tr");
-            const tB = safeStr(teacherName(b.teacherId)).toLocaleLowerCase("tr");
+            const tA = teacherName(a.teacherId).toLocaleLowerCase("tr");
+            const tB = teacherName(b.teacherId).toLocaleLowerCase("tr");
             const tComp = tA.localeCompare(tB, "tr");
             if (tComp !== 0) return tComp;
-            return safeStr(a.name).localeCompare(safeStr(b.name), "tr");
+            return a.name.localeCompare(b.name, "tr");
         });
 
     return (React.createElement("div", null,
@@ -1117,7 +1022,7 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
 /* ---------------- Öğrenci Detay Penceresi ---------------- */
 function StudentDetailModal({ student, teacherName, payments, lessons, studentCredit, onClose }) {
     if (!student) return null;
-    const studentPayments = (payments || []).filter(p => p.studentId === student.id).slice().sort((a, b) => safeStr(b.date).localeCompare(safeStr(a.date)));
+    const studentPayments = (payments || []).filter(p => p.studentId === student.id).slice().sort((a, b) => b.date.localeCompare(a.date));
     const lastPayment = studentPayments[0];
     const credit = studentCredit ? studentCredit(student.id) : null;
     const history = calculateStudentLessonHistory(student, payments, lessons);
@@ -1168,29 +1073,37 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
 
     useEffect(() => { ensureWeekLessons(weekKey); }, [weekKey]);
 
-    let weekLessons = lessons.filter(l => l && (l.weekKey === weekKey || (l.isTelafi && l.date && weekKeyOf(fromISODate(l.date)) === weekKey)));
+    let weekLessons = lessons.filter(l => l.weekKey === weekKey || (l.isTelafi && l.date && weekKeyOf(fromISODate(l.date)) === weekKey));
     if (onlyTeacherId) weekLessons = weekLessons.filter(l => l.teacherId === onlyTeacherId);
     weekLessons = weekLessons.filter(l => !isDepartedLesson(l, studentById(l.studentId)));
-    weekLessons = weekLessons.slice().sort((a, b) => safeStr(a.date).localeCompare(safeStr(b.date)));
+    weekLessons = weekLessons.slice().sort((a, b) => a.date.localeCompare(b.date));
 
     const byId = {};
-    lessons.forEach(l => { if (l && l.id) byId[l.id] = l; });
+    lessons.forEach(l => { byId[l.id] = l; });
     const telafiByOriginal = {};
-    lessons.forEach(l => { if (l && l.isTelafi && l.linkedTo) telafiByOriginal[l.linkedTo] = l; });
+    lessons.forEach(l => { if (l.isTelafi && l.linkedTo) telafiByOriginal[l.linkedTo] = l; });
+
+    function chainRootOf(l) {
+        let current = l;
+        while (current.isTelafi && current.linkedTo && byId[current.linkedTo]) current = byId[current.linkedTo];
+        return current;
+    }
+    function buildChain(l) {
+        const chain = [l];
+        let current = l;
+        while (telafiByOriginal[current.id]) { current = telafiByOriginal[current.id]; chain.push(current); }
+        return chain;
+    }
 
     const seenRootIds = new Set();
     const rowChains = [];
     weekLessons.forEach(l => {
-        const root = chainRootOf(l, byId);
-        if (!root || seenRootIds.has(root.id)) return;
+        const root = chainRootOf(l);
+        if (seenRootIds.has(root.id)) return;
         seenRootIds.add(root.id);
-        rowChains.push(buildChain(root, telafiByOriginal));
+        rowChains.push(buildChain(root));
     });
-    rowChains.sort((a, b) => {
-        const dA = a && a[0] ? safeStr(a[0].date) : "";
-        const dB = b && b[0] ? safeStr(b[0].date) : "";
-        return dA.localeCompare(dB);
-    });
+    rowChains.sort((a, b) => a[0].date.localeCompare(b[0].date));
 
     function resetPayoutIfPaid(teacherId, wKey) {
         if (!payouts || !setPayouts) return;
@@ -1274,7 +1187,6 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                         React.createElement(Th, null, "Durum"),
                         React.createElement(Th, null))),
                 React.createElement("tbody", null, rowChains.map(chain => {
-                    if (!chain || chain.length === 0) return null;
                     const first = chain[0];
                     const last = chain[chain.length - 1];
                     const st = studentById(first.studentId);
@@ -1291,8 +1203,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                             clWeekKey !== weekKey && React.createElement("span", { className: "ml-1" }, React.createElement(Pill, { tone: "neutral" }, "Başka hafta"))));
                     });
 
-                    // Telafi tarihi sonraki haftaya aitse 'Haftaya' gösterilir
-                    const isNextWeekTelafi = last.isTelafi && last.status === "bekliyor" && last.date && weekKeyOf(fromISODate(last.date)) > weekKey;
+                    const isNextWeekTelafi = last.isTelafi && last.status === "bekliyor" && weekKeyOf(fromISODate(last.date)) > weekKey;
 
                     return (React.createElement("tr", { key: first.id },
                         React.createElement(Td, { style: monoFont }, ...dateNodes),
@@ -1302,7 +1213,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                         React.createElement(Td, null,
                             isNextWeekTelafi 
                                 ? React.createElement(Pill, { tone: "warning" }, "Haftaya") 
-                                : React.createElement(Pill, { tone: (statusMeta[last.status] || {}).tone || "neutral" }, (statusMeta[last.status] || {}).label || last.status)),
+                                : React.createElement(Pill, { tone: statusMeta[last.status].tone }, statusMeta[last.status].label)),
                         React.createElement(Td, { className: "text-right whitespace-nowrap" }, last.status === "bekliyor" ? (React.createElement("div", { className: "flex gap-1 justify-end flex-wrap" },
                             React.createElement("button", { style: btnStyle("primary"), onClick: () => setStatus(last.id, "yapildi") }, "Yapıldı"),
                             React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(last.id, "mazeretli") }, "Mazeretli"),
@@ -1390,7 +1301,7 @@ function OdemelerTab({ students, payments, setPayments, studentCredit, staff, ro
         return "Merhaba, " + info.studentName + " için " + fmtTL(info.amount) + " tutarında ödeme (" + info.method + ") alındı. Tarih: " + fmtDateTR(info.date) + ".";
     }
 
-    const sorted = payments.slice().sort((a, b) => safeStr(b.date).localeCompare(safeStr(a.date)));
+    const sorted = payments.slice().sort((a, b) => b.date.localeCompare(a.date));
     const studentName = (id) => (students.find(s => s.id === id) || {}).name || "—";
 
     return (React.createElement("div", null,
@@ -1448,8 +1359,8 @@ function isRusenAyaz(teacherName) {
     return !!teacherName && teacherName.trim().toLocaleLowerCase("tr") === "ruşen ayaz";
 }
 function computeTeacherWeek(lessons, students, teacherId, weekKey, teacherName) {
-    const weekLessons = lessons.filter(l => l && l.teacherId === teacherId && (l.weekKey === weekKey || (l.isTelafi && l.date && weekKeyOf(fromISODate(l.date)) === weekKey)))
-        .slice().sort((a, b) => safeStr(a.date).localeCompare(safeStr(b.date)));
+    const weekLessons = lessons.filter(l => l.teacherId === teacherId && (l.weekKey === weekKey || (l.isTelafi && weekKeyOf(fromISODate(l.date)) === weekKey)))
+        .slice().sort((a, b) => a.date.localeCompare(b.date));
     let total = 0;
     const special = isRusenAyaz(teacherName);
     let yapilanSayisi = 0;
@@ -1473,35 +1384,37 @@ function computeTeacherWeek(lessons, students, teacherId, weekKey, teacherName) 
 
 function buildHakedisRowChains(rows, allTeacherLessons) {
     const byId = {};
-    allTeacherLessons.forEach(l => { if (l && l.id) byId[l.id] = l; });
+    allTeacherLessons.forEach(l => { byId[l.id] = l; });
     const telafiByOriginal = {};
-    allTeacherLessons.forEach(l => { if (l && l.isTelafi && l.linkedTo) telafiByOriginal[l.linkedTo] = l; });
+    allTeacherLessons.forEach(l => { if (l.isTelafi && l.linkedTo) telafiByOriginal[l.linkedTo] = l; });
     const payById = {};
     const studentById = {};
-    rows.forEach(r => { 
-        if (r && r.lesson) {
-            payById[r.lesson.id] = r.pay; 
-            studentById[r.lesson.id] = r.student; 
-        }
-    });
+    rows.forEach(r => { payById[r.lesson.id] = r.pay; studentById[r.lesson.id] = r.student; });
+
+    function chainRootOf(l) {
+        let current = l;
+        while (current.isTelafi && current.linkedTo && byId[current.linkedTo]) current = byId[current.linkedTo];
+        return current;
+    }
+    function buildChain(l) {
+        const chain = [l];
+        let current = l;
+        while (telafiByOriginal[current.id]) { current = telafiByOriginal[current.id]; chain.push(current); }
+        return chain;
+    }
 
     const seenRootIds = new Set();
     const result = [];
     rows.forEach(r => {
-        if (!r || !r.lesson) return;
-        const root = chainRootOf(r.lesson, byId);
-        if (!root || seenRootIds.has(root.id)) return;
+        const root = chainRootOf(r.lesson);
+        if (seenRootIds.has(root.id)) return;
         seenRootIds.add(root.id);
-        const chain = buildChain(root, telafiByOriginal);
+        const chain = buildChain(root);
         const rowPay = chain.reduce((sum, cl) => sum + (payById[cl.id] || 0), 0);
         const student = studentById[root.id] || studentById[r.lesson.id];
         result.push({ chain, rowPay, student });
     });
-    result.sort((a, b) => {
-        const dA = a && a.chain && a.chain[0] ? safeStr(a.chain[0].date) : "";
-        const dB = b && b.chain && b.chain[0] ? safeStr(b.chain[0].date) : "";
-        return dA.localeCompare(dB);
-    });
+    result.sort((a, b) => a.chain[0].date.localeCompare(b.chain[0].date));
     return result;
 }
 
@@ -1574,8 +1487,7 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
                             React.createElement(Th, null, "Tür"),
                             React.createElement(Th, null, "Durum"),
                             React.createElement(Th, null, "Tutar"))),
-                    React.createElement("tbody", null, buildHakedisRowChains(rows, lessons.filter(l => l && l.teacherId === t.id)).map(({ chain, rowPay, student }) => {
-                        if (!chain || chain.length === 0) return null;
+                    React.createElement("tbody", null, buildHakedisRowChains(rows, lessons.filter(l => l.teacherId === t.id)).map(({ chain, rowPay, student }) => {
                         const first = chain[0];
                         const last = chain[chain.length - 1];
                         const dateNodes = [];
@@ -1588,7 +1500,7 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
                                 clWeekKey !== weekKey && React.createElement("span", { className: "ml-1" }, React.createElement(Pill, { tone: "neutral" }, "Başka hafta"))));
                         });
 
-                        const isNextWeekTelafiHakedis = last.isTelafi && last.status === "bekliyor" && last.date && weekKeyOf(fromISODate(last.date)) > weekKey;
+                        const isNextWeekTelafiHakedis = last.isTelafi && last.status === "bekliyor" && weekKeyOf(fromISODate(last.date)) > weekKey;
 
                         return React.createElement("tr", { key: first.id },
                             React.createElement(Td, { style: monoFont }, ...dateNodes),
@@ -1649,7 +1561,7 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
         }
     }
 
-    const payoutRows = (payouts || []).filter(p => p && p.paid && p.paidDate).map(p => {
+    const payoutRows = (payouts || []).filter(p => p.paid && p.paidDate).map(p => {
         const tc = (teachers || []).find(t => t.id === p.teacherId);
         return { 
             id: "payout-" + p.id, 
@@ -1663,7 +1575,7 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
     });
 
     const normalizedExpenses = (expenses || []).map(e => Object.assign({ type: e.type || "gider", method: e.method || "nakit" }, e));
-    const sorted = normalizedExpenses.slice().concat(payoutRows).sort((a, b) => safeStr(b.date).localeCompare(safeStr(a.date)));
+    const sorted = normalizedExpenses.slice().concat(payoutRows).sort((a, b) => b.date.localeCompare(a.date));
     const thisMonth = monthKeyOf(date || toISODate(new Date()));
     
     const buAyGiderToplam = sorted.filter(e => e.type !== "gelir" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
@@ -1744,91 +1656,93 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
 function RaporTab({ payments, payouts, expenses }) {
     const months = useMemo(() => {
         const set = new Set();
-        (payments || []).forEach(p => { if (p && p.date) set.add(monthKeyOf(p.date)); });
-        (expenses || []).forEach(e => { if (e && e.date) set.add(monthKeyOf(e.date)); });
-        (payouts || []).forEach(p => { if (p && p.paid && p.paidDate) set.add(monthKeyOf(p.paidDate)); });
+        payments.forEach(p => set.add(monthKeyOf(p.date)));
+        expenses.forEach(e => set.add(monthKeyOf(e.date)));
+        payouts.forEach(p => { if (p.paid && p.paidDate) set.add(monthKeyOf(p.paidDate)); });
         set.add(monthKeyOf(toISODate(new Date())));
         set.add("2026-10");
-        return Array.from(set).filter(Boolean).sort().reverse();
+        return Array.from(set).sort().reverse();
     }, [payments, expenses, payouts]);
 
-    const [month, setMonth] = useState(months[0] || "2026-10");
-    useEffect(() => { if (!months.includes(month)) setMonth(months[0] || "2026-10"); }, [months, month]);
+    const [month, setMonth] = useState(months[0]);
+    useEffect(() => { if (!months.includes(month)) setMonth(months[0]); }, [months]);
 
-    // Belirlenen gerçek anlık taban değerleri (04.10.2026 itibarıyla)
-    const BASELINE_DATE = "2026-10-04";
-    const BASELINE_BANKA = 35195;
-    const BASELINE_NAKIT = 9900;
+    // Belirlenen gerçek başlangıç tabanı: Ekim 2026 başı
+    // Banka (EFT): 35.195 TL | Eldeki Nakit: 9.900 TL | Toplam: 45.095 TL
+    const BASELINE = {
+        month: "2026-10",
+        banka: 35195,
+        nakit: 9900
+    };
 
     const stats = useMemo(() => {
-        // Seçilen aya ait net akışları hesaplar
-        const mPayments = (payments || []).filter(p => p && p.date && monthKeyOf(p.date) === month);
-        const payHavale = mPayments.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
-        const payNakit = mPayments.filter(p => p.method === "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
+        function getMonthDelta(mKey) {
+            const mPayments = payments.filter(p => monthKeyOf(p.date) === mKey);
+            const mPayHavale = mPayments.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
+            const mPayNakit = mPayments.filter(p => p.method === "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
 
-        const harici = (expenses || []).filter(e => e && e.type === "gelir" && e.date && monthKeyOf(e.date) === month).reduce((a, e) => a + Number(e.amount || 0), 0);
+            const mHarici = (expenses || []).filter(e => e.type === "gelir" && monthKeyOf(e.date) === mKey).reduce((a, e) => a + Number(e.amount || 0), 0);
 
-        const mPayouts = (payouts || []).filter(p => p && p.paid && p.paidDate && monthKeyOf(p.paidDate) === month);
-        const payoutHavale = mPayouts.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
-        const payoutNakit = mPayouts.filter(p => p.method === "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
+            const mPayouts = payouts.filter(p => p.paid && p.paidDate && monthKeyOf(p.paidDate) === mKey);
+            const mPayoutHavale = mPayouts.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
+            const mPayoutNakit = mPayouts.filter(p => p.method === "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
 
-        const mExp = (expenses || []).filter(e => e && e.type !== "gelir" && e.date && monthKeyOf(e.date) === month);
-        const expHavale = mExp.filter(e => e.method === "havale").reduce((a, e) => a + Number(e.amount || 0), 0);
-        const expNakit = mExp.filter(e => e.method !== "havale").reduce((a, e) => a + Number(e.amount || 0), 0);
+            const mExp = (expenses || []).filter(e => e.type !== "gelir" && monthKeyOf(e.date) === mKey);
+            const mExpHavale = mExp.filter(e => e.method === "havale").reduce((a, e) => a + Number(e.amount || 0), 0);
+            const mExpNakit = mExp.filter(e => e.method !== "havale").reduce((a, e) => a + Number(e.amount || 0), 0);
 
-        const netHavale = (payHavale + harici) - (payoutHavale + expHavale);
-        const netNakit = payNakit - (payoutNakit + expNakit);
-        const netTotal = netHavale + netNakit;
+            const netHavale = (mPayHavale + mHarici) - (mPayoutHavale + mExpHavale);
+            const netNakit = mPayNakit - (mPayoutNakit + mExpNakit);
 
-        // 04 Ekim 2026 sonrasında sisteme girilen YENİ hareketleri tabana ekler/düşer
-        let deltaPostBanka = 0;
-        let deltaPostNakit = 0;
+            return {
+                netHavale,
+                netNakit,
+                netTotal: netHavale + netNakit,
+                payHavale: mPayHavale,
+                payNakit: mPayNakit,
+                harici: mHarici,
+                payoutHavale: mPayoutHavale,
+                payoutNakit: mPayoutNakit,
+                expHavale: mExpHavale,
+                expNakit: mExpNakit
+            };
+        }
 
-        (payments || []).forEach(p => {
-            if (p && p.date && p.date > BASELINE_DATE) {
-                if (p.method === "nakit") deltaPostNakit += Number(p.amount || 0);
-                else deltaPostBanka += Number(p.amount || 0);
-            }
-        });
+        const cur = getMonthDelta(month);
 
-        (expenses || []).forEach(e => {
-            if (e && e.date && e.date > BASELINE_DATE) {
-                if (e.type === "gelir") {
-                    deltaPostBanka += Number(e.amount || 0);
-                } else {
-                    if (e.method === "havale") deltaPostBanka -= Number(e.amount || 0);
-                    else deltaPostNakit -= Number(e.amount || 0);
+        let birikmisHavale = 0;
+        let birikmisNakit = 0;
+
+        if (month >= BASELINE.month) {
+            birikmisHavale = BASELINE.banka;
+            birikmisNakit = BASELINE.nakit;
+
+            const tumAylarAsc = Array.from(new Set([...months, BASELINE.month])).sort();
+            tumAylarAsc.forEach(m => {
+                if (m >= BASELINE.month && m <= month) {
+                    const d = getMonthDelta(m);
+                    birikmisHavale += d.netHavale;
+                    birikmisNakit += d.netNakit;
                 }
-            }
-        });
+            });
+        } else {
+            birikmisHavale = cur.netHavale;
+            birikmisNakit = cur.netNakit;
+        }
 
-        (payouts || []).forEach(p => {
-            if (p && p.paid && p.paidDate && p.paidDate > BASELINE_DATE) {
-                if (p.method === "nakit") deltaPostNakit -= Number(p.amount || 0);
-                else deltaPostBanka -= Number(p.amount || 0);
-            }
-        });
-
-        const guncelBanka = BASELINE_BANKA + deltaPostBanka;
-        const guncelNakit = BASELINE_NAKIT + deltaPostNakit;
-        const guncelToplam = guncelBanka + guncelNakit;
+        const birikmisToplam = birikmisHavale + birikmisNakit;
 
         return {
-            ayGelir: payHavale + payNakit,
-            payNakit,
-            payHavale,
-            harici,
-            ayGider: payoutHavale + payoutNakit + expHavale + expNakit,
-            payoutHavale,
-            payoutNakit,
-            expHavale,
-            expNakit,
-            netTotal,
-            guncelBanka,
-            guncelNakit,
-            guncelToplam
+            cur,
+            birikmisHavale,
+            birikmisNakit,
+            birikmisToplam,
+            isCurrentOrFuture: month >= BASELINE.month
         };
-    }, [payments, payouts, expenses, month]);
+    }, [payments, payouts, expenses, month, months]);
+
+    const { cur, birikmisHavale, birikmisNakit, birikmisToplam, isCurrentOrFuture } = stats;
+    const ayGelir = cur.payHavale + cur.payNakit;
 
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Aylık Özet", title: "Kasa & Finansal Rapor", action: React.createElement("select", { style: Object.assign(Object.assign({}, inputStyle), { width: "auto" }), value: month, onChange: e => setMonth(e.target.value) }, months.map(m => React.createElement("option", { key: m, value: m }, monthLabel(m)))) }),
@@ -1837,25 +1751,25 @@ function RaporTab({ payments, payouts, expenses }) {
         React.createElement("div", { className: "grid md:grid-cols-4 gap-3 mb-5" },
             React.createElement(StatCard, { 
                 label: "Öğrenci Gelirleri", 
-                value: fmtTL(stats.ayGelir), 
-                subtitle: `Nakit: ${fmtTL(stats.payNakit)} | EFT: ${fmtTL(stats.payHavale)}` 
+                value: fmtTL(ayGelir), 
+                subtitle: "Nakit: " + fmtTL(cur.payNakit) + " | EFT: " + fmtTL(cur.payHavale) 
             }),
             React.createElement(StatCard, { 
                 label: "Harici Gelirler", 
-                value: fmtTL(stats.harici),
+                value: fmtTL(cur.harici),
                 subtitle: "Banka eşleşmeli gelirler" 
             }),
             React.createElement(StatCard, { 
                 label: "Bu Ayın Net Akışı", 
-                value: fmtTL(Math.abs(stats.netTotal)), 
-                tone: stats.netTotal >= 0 ? "success" : "danger",
-                subtitle: stats.netTotal >= 0 ? "Bu ay kârda" : "Bu ay zararda"
+                value: fmtTL(Math.abs(cur.netTotal)), 
+                tone: cur.netTotal >= 0 ? "success" : "danger",
+                subtitle: cur.netTotal >= 0 ? "Bu ay kârda" : "Bu ay zararda"
             }),
             React.createElement(StatCard, { 
-                label: "GÜNCEL TOPLAM KASA", 
-                value: fmtTL(stats.guncelToplam), 
-                tone: stats.guncelToplam >= 0 ? "success" : "danger",
-                subtitle: `Banka: ${fmtTL(stats.guncelBanka)} | Nakit: ${fmtTL(stats.guncelNakit)}`
+                label: "TOPLAM KASA TUTARI", 
+                value: fmtTL(birikmisToplam), 
+                tone: birikmisToplam >= 0 ? "success" : "danger",
+                subtitle: isCurrentOrFuture ? ("Banka: " + fmtTL(birikmisHavale) + " | Nakit: " + fmtTL(birikmisNakit)) : "Geçmiş Ay"
             })),
 
         // Net Ayrılmış İki Gerçek Kasa Kutusu
@@ -1864,17 +1778,17 @@ function RaporTab({ payments, payouts, expenses }) {
                 React.createElement("div", { className: "flex justify-between items-center mb-1" },
                     React.createElement("span", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, "Banka Hesabındaki Tutar (EFT / Havale)"),
                     React.createElement(Pill, { tone: "primary" }, "Banka Kasası")),
-                React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: stats.guncelBanka >= 0 ? C.primary : C.danger }) }, fmtTL(stats.guncelBanka)),
+                React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisHavale >= 0 ? C.primary : C.danger }) }, fmtTL(birikmisHavale)),
                 React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, 
-                    "35.195 ₺ taban meblağı üzerine, yapılan EFT aidatları ve harici banka gelirleri eklenip EFT ile ödenen gider/hakedişler düşülerek anlık güncellenir.")),
+                    "35.195 ₺ tabanı üzerinden, yapılan EFT aidatları ve harici banka gelirleri eklenip EFT ile ödenen gider/hakedişler düşülerek anlık hesaplanır.")),
 
             React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 18, borderLeft: "5px solid " + C.accent }) },
                 React.createElement("div", { className: "flex justify-between items-center mb-1" },
                     React.createElement("span", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, "Eldeki Nakit Kasa Tutarı"),
                     React.createElement(Pill, { tone: "accent" }, "Nakit Kasa")),
-                React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: stats.guncelNakit >= 0 ? C.success : C.danger }) }, fmtTL(stats.guncelNakit)),
+                React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisNakit >= 0 ? C.success : C.danger }) }, fmtTL(birikmisNakit)),
                 React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, 
-                    "9.900 ₺ taban meblağı üzerine, elden alınan nakit aidatlar eklenip elden nakit ödenen gider/hakedişler düşülerek anlık güncellenir."))),
+                    "9.900 ₺ tabanı üzerinden, elden alınan nakit aidatlar eklenip elden nakit ödenen gider/hakedişler düşülerek anlık hesaplanır."))),
 
         // Finansal Rapor Tablosu
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
@@ -1884,45 +1798,40 @@ function RaporTab({ payments, payouts, expenses }) {
                     React.createElement("tr", null,
                         React.createElement(Td, null, 
                             React.createElement("div", { className: "font-medium" }, "Bu ayki öğrenci aidat gelirleri"),
-                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, `Elden (Nakit): ${fmtTL(stats.payNakit)} | EFT/Havale: ${fmtTL(stats.payHavale)}`)),
-                        React.createElement(Td, { className: "text-right", style: monoFont }, fmtTL(stats.ayGelir))),
-                    stats.harici > 0 && React.createElement("tr", null,
+                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, "Elden (Nakit): " + fmtTL(cur.payNakit) + " | EFT/Havale: " + fmtTL(cur.payHavale))),
+                        React.createElement(Td, { className: "text-right", style: monoFont }, fmtTL(ayGelir))),
+                    cur.harici > 0 && React.createElement("tr", null,
                         React.createElement(Td, null, 
                             React.createElement("div", { className: "font-medium", style: { color: C.success } }, "Bu ayki harici banka gelirleri"),
                             React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, "Banka hesabıyla eşleşen ek girdiler")),
-                        React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.success }) }, "+ " + fmtTL(stats.harici))),
+                        React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.success }) }, "+ " + fmtTL(cur.harici))),
                     React.createElement("tr", null,
                         React.createElement(Td, null, 
                             React.createElement("div", { className: "font-medium" }, "Bu ayki öğretmen hakediş ödemeleri"),
-                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, `EFT ile: ${fmtTL(stats.payoutHavale)} | Elden Nakit: ${fmtTL(stats.payoutNakit)}`)),
-                        React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.danger }) }, "− " + fmtTL(stats.payoutHavale + stats.payoutNakit))),
+                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, "EFT ile: " + fmtTL(cur.payoutHavale) + " | Elden Nakit: " + fmtTL(cur.payoutNakit))),
+                        React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.danger }) }, "− " + fmtTL(cur.payoutHavale + cur.payoutNakit))),
                     React.createElement("tr", null,
                         React.createElement(Td, null, 
                             React.createElement("div", { className: "font-medium" }, "Bu ayki diğer giderler"),
-                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, `EFT ile: ${fmtTL(stats.expHavale)} | Elden Nakit: ${fmtTL(stats.expNakit)}`)),
-                        React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.danger }) }, "− " + fmtTL(stats.expHavale + stats.expNakit))),
+                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, "EFT ile: " + fmtTL(cur.expHavale) + " | Elden Nakit: " + fmtTL(cur.expNakit))),
+                        React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.danger }) }, "− " + fmtTL(cur.expHavale + cur.expNakit))),
                     React.createElement("tr", null,
                         React.createElement(Td, null, 
                             React.createElement("div", { className: "font-medium", style: { color: C.inkSoft } }, "Bu Ayın Net Nakit Değişimi")),
-                        React.createElement(Td, { className: "text-right font-medium", style: Object.assign(Object.assign({}, monoFont), { color: stats.netTotal >= 0 ? C.success : C.danger }) }, 
-                            (stats.netTotal < 0 ? "− " : "+ ") + fmtTL(Math.abs(stats.netTotal)))),
+                        React.createElement(Td, { className: "text-right font-medium", style: Object.assign(Object.assign({}, monoFont), { color: cur.netTotal >= 0 ? C.success : C.danger }) }, 
+                            (cur.netTotal < 0 ? "− " : "+ ") + fmtTL(Math.abs(cur.netTotal)))),
                     React.createElement("tr", null,
                         React.createElement(Td, { className: "font-semibold text-base", style: { paddingTop: 14 } }, 
-                            React.createElement("div", null, "GÜNCEL TOPLAM KASA (BİRİKMİŞ)"),
+                            React.createElement("div", null, "TOPLAM KASA TUTARI (BİRİKMİŞ)"),
                             React.createElement("div", { className: "text-xs font-normal", style: { color: C.inkSoft } }, 
-                                `Banka Hesabı: ${fmtTL(stats.guncelBanka)} | Eldeki Nakit: ${fmtTL(stats.guncelNakit)}`)),
-                        React.createElement(Td, { className: "text-right font-semibold text-base", style: Object.assign(Object.assign({}, monoFont), { color: stats.guncelToplam >= 0 ? C.success : C.danger, paddingTop: 14 }) }, 
-                            fmtTL(stats.guncelToplam)))))))));
+                                "Banka Hesabı: " + fmtTL(birikmisHavale) + " | Eldeki Nakit: " + fmtTL(birikmisNakit))),
+                        React.createElement(Td, { className: "text-right font-semibold text-base", style: Object.assign(Object.assign({}, monoFont), { color: birikmisToplam >= 0 ? C.success : C.danger, paddingTop: 14 }) }, 
+                            fmtTL(birikmisToplam)))))))));
 }
 
 /* ---------------- Render ---------------- */
-ReactDOM.createRoot(document.getElementById("root")).render(
-    React.createElement(ErrorBoundary, null,
-        React.createElement(ConnectionGate, null,
-            React.createElement(App, null)
-        )
-    )
-);
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ConnectionGate, null,
+    React.createElement(App, null)));
 </script>
 </body>
 </html>
