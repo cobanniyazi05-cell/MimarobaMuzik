@@ -1431,7 +1431,8 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
                 paid: true, 
                 amount: total, 
                 method: method, 
-                paidDate: toISODate(new Date()) 
+                paidDate: toISODate(new Date()),
+                paidAt: Date.now()
             }) : p));
         } else {
             setPayouts([...payouts, { 
@@ -1441,7 +1442,8 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
                 amount: total, 
                 method: method, 
                 paid: true, 
-                paidDate: toISODate(new Date()) 
+                paidDate: toISODate(new Date()),
+                paidAt: Date.now()
             }]);
         }
     }
@@ -1673,9 +1675,22 @@ function RaporTab({ payments, payouts, expenses }) {
     // Banka (EFT): 35.195 TL | Eldeki Nakit: 9.900 TL | Toplam: 45.095 TL
     const BASELINE = {
         month: "2026-10",
+        date: "2026-10-04",
+        ts: 1791142633075,   // 4 Ekim 2026: bu andan önceki işlemler tabana dahildir, sayılmaz
         banka: 35195.70,
         nakit: 9900
     };
+    function createdTsOf(rec) {
+        const m = /^[a-z]+_([0-9a-z]{8})/.exec((rec && rec.id) || "");
+        if (!m) return null;
+        const t = parseInt(m[1], 36);
+        return (t > 1.5e12 && t < 3e12) ? t : null;
+    }
+    function afterBaseline(rec, dateStr, tsOverride) {
+        const ts = (tsOverride !== undefined && tsOverride !== null) ? tsOverride : createdTsOf(rec);
+        if (ts !== null) return ts >= BASELINE.ts;
+        return !!dateStr && dateStr > BASELINE.date;
+    }
 
     const stats = useMemo(() => {
         function getMonthDelta(mKey) {
@@ -1712,26 +1727,25 @@ function RaporTab({ payments, payouts, expenses }) {
 
         const cur = getMonthDelta(month);
 
-        // Ekim 2026 ve sonraki aylar için taban üzerine ekleme mantığı
+        // Taban (4 Ekim 2026) üzerine, taban anından SONRA girilen işlemler eklenir
         let birikmisHavale = 0;
         let birikmisNakit = 0;
 
         if (month >= BASELINE.month) {
-            // Ekim 2026 tabanından itibaren kümülatif bakiye
-            birikmisHavale = BASELINE.banka;
-            birikmisNakit = BASELINE.nakit;
+            const okMonth = (d) => !!d && monthKeyOf(d) <= month;
+            const P = payments.filter(p => afterBaseline(p, p.date) && okMonth(p.date));
+            const H = (expenses || []).filter(e => e.type === "gelir" && afterBaseline(e, e.date) && okMonth(e.date));
+            const O = payouts.filter(p => p.paid && p.paidDate && afterBaseline(p, p.paidDate, p.paidAt === undefined ? null : p.paidAt) && okMonth(p.paidDate));
+            const X = (expenses || []).filter(e => e.type !== "gelir" && afterBaseline(e, e.date) && okMonth(e.date));
+            const sum = (arr) => arr.reduce((a, r) => a + Number(r.amount || 0), 0);
 
-            // Ekim dahil, seçilen aya kadar olan ayların net değişimlerini ekle
-            const tumAylarAsc = Array.from(new Set([...months, BASELINE.month])).sort();
-            tumAylarAsc.forEach(m => {
-                if (m >= BASELINE.month && m <= month) {
-                    const d = getMonthDelta(m);
-                    birikmisHavale += d.netHavale;
-                    birikmisNakit += d.netNakit;
-                }
-            });
+            birikmisHavale = BASELINE.banka
+                + sum(P.filter(p => p.method !== "nakit")) + sum(H)
+                - sum(O.filter(p => p.method !== "nakit")) - sum(X.filter(e => e.method === "havale"));
+            birikmisNakit = BASELINE.nakit
+                + sum(P.filter(p => p.method === "nakit"))
+                - sum(O.filter(p => p.method === "nakit")) - sum(X.filter(e => e.method !== "havale"));
         } else {
-            // Ekim 2026 öncesi geçmiş aylar için sadece o ayın neti
             birikmisHavale = cur.netHavale;
             birikmisNakit = cur.netNakit;
         }
@@ -1786,7 +1800,7 @@ function RaporTab({ payments, payouts, expenses }) {
                     React.createElement(Pill, { tone: "primary" }, "Banka Kasası")),
                 React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisHavale >= 0 ? C.primary : C.danger }) }, fmtTLd(birikmisHavale)),
                 React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, 
-                    "35.195,70 ₺ tabanı üzerinden, yapılan EFT aidatları ve harici banka gelirleri eklenip EFT ile ödenen gider/hakedişler düşülerek anlık hesaplanır.")),
+                    "4 Ekim 2026 itibarıyla 35.195,70 ₺ tabanı üzerinden; bu tarihten sonra girilen EFT aidatları ve harici banka gelirleri eklenip EFT ile ödenen gider/hakedişler düşülerek anlık hesaplanır.")),
 
             React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 18, borderLeft: "5px solid " + C.accent }) },
                 React.createElement("div", { className: "flex justify-between items-center mb-1" },
@@ -1794,7 +1808,7 @@ function RaporTab({ payments, payouts, expenses }) {
                     React.createElement(Pill, { tone: "accent" }, "Nakit Kasa")),
                 React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisNakit >= 0 ? C.success : C.danger }) }, fmtTLd(birikmisNakit)),
                 React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, 
-                    "9.900 ₺ tabanı üzerinden, elden alınan nakit aidatlar eklenip elden nakit ödenen gider/hakedişler düşülerek anlık hesaplanır."))),
+                    "4 Ekim 2026 itibarıyla 9.900 ₺ tabanı üzerinden; bu tarihten sonra elden alınan nakit aidatlar eklenip elden nakit ödenen gider/hakedişler düşülerek anlık hesaplanır."))),
 
         // Finansal Rapor Tablosu
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
