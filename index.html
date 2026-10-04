@@ -197,10 +197,7 @@ function useFirestoreList(name) {
     const [items, setItems] = useState([]);
     const [loaded, setLoaded] = useState(false);
     useEffect(() => {
-        if (!firebaseReady) {
-            setLoaded(true);
-            return;
-        }
+        if (!firebaseReady) { setLoaded(true); return; }
         const ref = db.collection("data").doc(name);
         const unsub = ref.onSnapshot(snap => {
             const d = snap.data();
@@ -225,10 +222,7 @@ function useFirestoreDoc(name, defaultValue) {
     const [value, setValue] = useState(defaultValue);
     const [loaded, setLoaded] = useState(false);
     useEffect(() => {
-        if (!firebaseReady) {
-            setLoaded(true);
-            return;
-        }
+        if (!firebaseReady) { setLoaded(true); return; }
         const ref = db.collection("data").doc(name);
         const unsub = ref.onSnapshot(snap => {
             const d = snap.data();
@@ -310,9 +304,7 @@ function calculateStudentLessonHistory(student, payments, lessons) {
 
     validLessons.forEach(l => {
         usedCount++;
-        if (usedCount <= completedCredits) {
-            return;
-        }
+        if (usedCount <= completedCredits) return;
 
         let tone = "neutral";
         let statusLabel = "";
@@ -1212,7 +1204,6 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                             clWeekKey !== weekKey && React.createElement("span", { className: "ml-1" }, React.createElement(Pill, { tone: "neutral" }, "Başka hafta"))));
                     });
 
-                    // Ders Takviminde: Telafi sonraki haftaya aitse 'Haftaya' gösterilir
                     const isNextWeekTelafi = last.isTelafi && last.status === "bekliyor" && weekKeyOf(fromISODate(last.date)) > weekKey;
 
                     return (React.createElement("tr", { key: first.id },
@@ -1510,7 +1501,7 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
                                 clWeekKey !== weekKey && React.createElement("span", { className: "ml-1" }, React.createElement(Pill, { tone: "neutral" }, "Başka hafta"))));
                         });
 
-                        // 1. DÜZELTME: Hakedişler sekmesinde sonraki haftaya ait bekleyen telafi varsa 'Haftaya' gösterilir
+                        // Hakedişler sekmesinde telafi sonraki haftaya aitse 'Haftaya' gösterilir
                         const isNextWeekTelafiHakedis = last.isTelafi && last.status === "bekliyor" && weekKeyOf(fromISODate(last.date)) > weekKey;
 
                         return React.createElement("tr", { key: first.id },
@@ -1595,7 +1586,6 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Finans", title: "Giderler & Harici Gelirler" }),
 
-        // Harici Gelir Ekleme Bölümü
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20, borderLeft: "4px solid " + C.success }) },
             React.createElement("div", { className: "flex justify-between items-center flex-wrap gap-2 mb-2" },
                 React.createElement("h3", { className: "text-lg", style: displayFont }, "Harici Gelir Ekle"),
@@ -1615,7 +1605,6 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
                 React.createElement("span", { className: "text-xs", style: { color: C.inkSoft } }, `Bu ayki toplam harici banka geliri: ${fmtTL(buAyHariciGelirToplam)}`),
                 React.createElement("button", { style: btnStyle("success"), onClick: addIncome }, "+ Harici Geliri Kaydet"))),
 
-        // Gider Girişi
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20 }) },
             React.createElement("h3", { className: "text-lg mb-3", style: displayFont }, "Yeni Gider Girişi"),
             React.createElement("div", { className: "grid md:grid-cols-5 gap-3 items-end" },
@@ -1639,7 +1628,6 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
                 React.createElement("span", { className: "text-sm", style: { color: C.inkSoft } }, monthLabel(thisMonth) + " toplam gideri"),
                 React.createElement("span", { className: "text-lg", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buAyGiderToplam)))),
 
-        // Kayıt Listesi
         sorted.length === 0 ? React.createElement(EmptyState, { text: "Henüz işlem kaydı yok." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
             React.createElement("table", { className: "w-full" },
                 React.createElement("thead", null,
@@ -1666,7 +1654,7 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
                         : React.createElement("button", { style: btnStyle("danger"), onClick: () => remove(e.id) }, "Sil")))))))))));
 }
 
-/* ---------------- Kâr / Zarar Rapor Tab (Eylül 2026 İtibarıyla Kümülatif Nakit/Banka Kasaları) ---------------- */
+/* ---------------- Kâr / Zarar Rapor Tab (Banka ve Nakit Kasaları Ayrı Ayrışır) ---------------- */
 function RaporTab({ payments, payouts, expenses }) {
     const months = useMemo(() => {
         const set = new Set();
@@ -1681,9 +1669,9 @@ function RaporTab({ payments, payouts, expenses }) {
     const [month, setMonth] = useState(months[0]);
     useEffect(() => { if (!months.includes(month)) setMonth(months[0]); }, [months]);
 
-    // 2, 3 ve 4. DÜZELTMELER: Eylül 2026 öncesini tamamen hariç tutan, Eylül ve sonrasını kümülatif aktaran hesaplama
+    // Kasa Tutarlarını (Nakit & EFT/Havale) Eylül 2026 Öncesini Katmadan Kümülatif Olarak Hesaplar
     const stats = useMemo(() => {
-        const START_MONTH = "2026-09"; // Eylül 2026 milat ayı
+        const START_MONTH = "2026-09"; // Milat başlangıç ayı
 
         function getMonthChannels(mKey) {
             const mPayments = payments.filter(p => monthKeyOf(p.date) === mKey);
@@ -1722,11 +1710,10 @@ function RaporTab({ payments, payouts, expenses }) {
         let devirHavale = 0;
         let devirNakit = 0;
 
-        // Eylülden önceki ayları bu kümülatif devir düzenlemesine dahil etme!
+        // Eylül 2026'dan önceki aylar devir havuzuna KESİNLİKLE dahil edilmez
         if (month > START_MONTH) {
             const tumAylar = Array.from(new Set([...months, START_MONTH])).sort();
             tumAylar.forEach(m => {
-                // SADECE Eylül 2026 ve sonrasındaki aylar kümülatif olarak devir havuzuna eklenir
                 if (m >= START_MONTH && m < month) {
                     const c = getMonthChannels(m);
                     devirHavale += c.netHavale;
@@ -1735,7 +1722,6 @@ function RaporTab({ payments, payouts, expenses }) {
             });
         }
 
-        // Seçili ay Eylül 2026 ve sonrasıysa devir üzerine eklenir; Eylül öncesiyse devir eklenmez
         const birikmisHavale = month >= START_MONTH ? (devirHavale + cur.netHavale) : cur.netHavale;
         const birikmisNakit = month >= START_MONTH ? (devirNakit + cur.netNakit) : cur.netNakit;
         const birikmisToplam = birikmisHavale + birikmisNakit;
@@ -1754,7 +1740,6 @@ function RaporTab({ payments, payouts, expenses }) {
 
     const { cur, birikmisHavale, birikmisNakit, birikmisToplam, devirToplam, isPostSept } = stats;
     const ayGelir = cur.payHavale + cur.payNakit;
-    const ayGider = cur.payoutHavale + cur.payoutNakit + cur.expHavale + cur.expNakit;
 
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Aylık Özet", title: "Kasa & Finansal Rapor", action: React.createElement("select", { style: Object.assign(Object.assign({}, inputStyle), { width: "auto" }), value: month, onChange: e => setMonth(e.target.value) }, months.map(m => React.createElement("option", { key: m, value: m }, monthLabel(m)))) }),
@@ -1778,7 +1763,7 @@ function RaporTab({ payments, payouts, expenses }) {
                 subtitle: cur.netTotal >= 0 ? "Bu ay kârda" : "Bu ay zararda"
             }),
             React.createElement(StatCard, { 
-                label: isPostSept ? "KASA TUTARI (BİRİKMİŞ)" : "AY SONU BAKİYESİ", 
+                label: isPostSept ? "KASA TUTARI (BİRİKMİŞ)" : "AYLIK NET SONUÇ", 
                 value: fmtTL(Math.abs(birikmisToplam)), 
                 tone: birikmisToplam >= 0 ? "success" : "danger",
                 subtitle: isPostSept 
@@ -1786,28 +1771,33 @@ function RaporTab({ payments, payouts, expenses }) {
                     : "Eylül 2026 Öncesi (Devirsiz)"
             })),
 
-        // İki Ayrı Kasa Göstergesi (Banka Hesabı & Eldeki Nakit)
+        // Net Ayrılmış İki Kasa Kutusu
         React.createElement("div", { className: "grid md:grid-cols-2 gap-4 mb-5" },
-            React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, borderLeft: "4px solid " + C.primary }) },
-                React.createElement("div", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, "EFT / Havale (Banka Hesabı Kasası)"),
-                React.createElement("div", { className: "text-2xl mt-1 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisHavale >= 0 ? C.primary : C.danger }) }, fmtTL(birikmisHavale)),
-                React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, 
-                    isPostSept ? "Eylül 2026'dan itibaren biriken tüm banka gelirleri ve EFT ile ödenen giderlerin net bakiyesi." : "Bu ayki net EFT/Havale farkı.")),
-            React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, borderLeft: "4px solid " + C.accent }) },
-                React.createElement("div", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, "Eldeki Nakit Kasa"),
-                React.createElement("div", { className: "text-2xl mt-1 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisNakit >= 0 ? C.success : C.danger }) }, fmtTL(birikmisNakit)),
-                React.createElement("p", { className: "text-xs mt-1", style: { color: C.inkSoft } }, 
-                    isPostSept ? "Eylül 2026'dan itibaren elden alınan nakit aidatlar ve nakit ödenen giderlerin eldeki net bakiyesi." : "Bu ayki net nakit farkı."))),
+            React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 18, borderLeft: "5px solid " + C.primary }) },
+                React.createElement("div", { className: "flex justify-between items-center mb-1" },
+                    React.createElement("span", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, "Banka Hesabındaki Tutar (EFT / Havale)"),
+                    React.createElement(Pill, { tone: "primary" }, "Banka Kasası")),
+                React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisHavale >= 0 ? C.primary : C.danger }) }, fmtTL(birikmisHavale)),
+                React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, 
+                    isPostSept ? "Eylül 2026'dan itibaren biriken tüm banka aidatları ve harici banka gelirlerinden, EFT ile yapılan harcamalar düşülerek hesaplanmıştır." : "Bu aya ait net banka hareketi.")),
 
-        // Detaylı Finansal Tablo
+            React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 18, borderLeft: "5px solid " + C.accent }) },
+                React.createElement("div", { className: "flex justify-between items-center mb-1" },
+                    React.createElement("span", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, "Eldeki Nakit Kasa Tutarı"),
+                    React.createElement(Pill, { tone: "accent" }, "Nakit Kasa")),
+                React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisNakit >= 0 ? C.success : C.danger }) }, fmtTL(birikmisNakit)),
+                React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, 
+                    isPostSept ? "Eylül 2026'dan itibaren elden alınan nakit aidatlardan, elden nakit ödenen öğretmen hakedişleri ve giderler düşülerek hesaplanmıştır." : "Bu aya ait net nakit hareketi."))),
+
+        // Finansal Rapor Tablosu
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
             React.createElement("h3", { className: "text-lg mb-3", style: displayFont }, monthLabel(month) + " Detaylı Finansal Raporu"),
             React.createElement("table", { className: "w-full" },
                 React.createElement("tbody", null,
                     (isPostSept && devirToplam !== 0) && React.createElement("tr", null,
                         React.createElement(Td, null, 
-                            React.createElement("div", { className: "font-medium", style: { color: C.primary } }, "Önceki Aydan Devreden Toplam Bakiye"),
-                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, `EFT/Banka Devri: ${fmtTL(stats.devirHavale)} | Nakit Kasa Devri: ${fmtTL(stats.devirNakit)}`)),
+                            React.createElement("div", { className: "font-medium", style: { color: C.primary } }, "Önceki Aydan Devreden Toplam Kasa Bakiyesi"),
+                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, `Banka Devri: ${fmtTL(stats.devirHavale)} | Nakit Devri: ${fmtTL(stats.devirNakit)}`)),
                         React.createElement(Td, { className: "text-right font-medium", style: Object.assign(Object.assign({}, monoFont), { color: devirToplam >= 0 ? C.primary : C.danger }) }, 
                             (devirToplam < 0 ? "− " : "+ ") + fmtTL(Math.abs(devirToplam)))),
                     React.createElement("tr", null,
