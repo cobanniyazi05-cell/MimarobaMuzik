@@ -468,6 +468,66 @@ function AdminPasscodeModal({ currentPasscode, onSave, onClose }) {
 }
 
 /* ---------------- Ana Uygulama ---------------- */
+/* ---------------- Yedekleme / Geri Yükleme ---------------- */
+function BackupModal({ data, setters, canRestore, onClose }) {
+    const [msg, setMsg] = useState("");
+    const fileRef = useRef(null);
+    const KEYS = [
+        ["staff", "Personel"], ["students", "Öğrenci"], ["lessons", "Ders"],
+        ["payments", "Ödeme"], ["expenses", "Gider/Gelir"], ["payouts", "Hakediş"]
+    ];
+    function buildBackup() {
+        const out = { app: "MimarobaMuzik", version: 1, createdAt: new Date().toISOString(), data: {} };
+        KEYS.forEach(([k]) => { out.data[k] = data[k] || []; });
+        return out;
+    }
+    function download(obj, prefix) {
+        const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = prefix + "-" + toISODate(new Date()) + ".json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }
+    function doBackup() {
+        download(buildBackup(), "Mimaroba-yedek");
+        setMsg("Yedek indirildi. Dosyayı güvenli bir yere (Google Drive vb.) kaydedin.");
+    }
+    function onFile(e) {
+        const f = e.target.files && e.target.files[0];
+        e.target.value = "";
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            let obj;
+            try { obj = JSON.parse(String(reader.result)); } catch (err) { setMsg("Hata: dosya okunamadı, geçerli bir yedek dosyası değil."); return; }
+            if (!obj || obj.app !== "MimarobaMuzik" || !obj.data) { setMsg("Hata: bu dosya Mimaroba yedeği değil."); return; }
+            const present = KEYS.filter(([k]) => Array.isArray(obj.data[k]));
+            if (!present.length) { setMsg("Hata: dosyada geri yüklenecek veri bulunamadı."); return; }
+            const summary = present.map(([k, label]) => label + ": " + obj.data[k].length).join("\n");
+            const when = obj.createdAt ? new Date(obj.createdAt).toLocaleString("tr-TR") : "?";
+            if (!confirm("Yedek tarihi: " + when + "\n\n" + summary + "\n\nŞu anki TÜM veriler bu yedekle DEĞİŞTİRİLECEK. Önce mevcut veriler güvenlik için otomatik indirilecek. Devam edilsin mi?")) return;
+            download(buildBackup(), "Mimaroba-geri-yukleme-oncesi");
+            present.forEach(([k]) => setters[k](obj.data[k]));
+            setMsg("Geri yükleme tamamlandı. Önceki veriler de ayrı bir dosya olarak indirildi.");
+        };
+        reader.onerror = () => setMsg("Hata: dosya okunamadı.");
+        reader.readAsText(f);
+    }
+    return (React.createElement(Modal, { title: "Yedekleme", onClose: onClose },
+        React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "Tüm öğrenci, ders, ödeme, gider ve hakediş verileri tek bir dosya olarak indirilir. Haftada bir yedek almanız önerilir. Şifreler yedeğe dahil değildir."),
+        React.createElement("div", { className: "space-y-3" },
+            React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("primary")), { width: "100%" }), onClick: doBackup }, "Yedeği İndir"),
+            canRestore && React.createElement("div", null,
+                React.createElement("input", { ref: fileRef, type: "file", accept: ".json,application/json", style: { display: "none" }, onChange: onFile }),
+                React.createElement("button", { style: Object.assign(Object.assign({}, btnStyle("danger")), { width: "100%" }), onClick: () => fileRef.current && fileRef.current.click() }, "Yedekten Geri Yükle"),
+                React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, "Dikkat: geri yükleme mevcut tüm verilerin üzerine yazar.")),
+            msg && React.createElement("div", { className: "text-sm", style: { color: msg.indexOf("Hata") === 0 ? C.danger : C.success } }, msg))));
+}
+
 function App() {
     const [staff, setStaff, staffLoaded] = useFirestoreList("staff-list");
     const [students, setStudents, studentsLoaded] = useFirestoreList("students-list");
@@ -490,6 +550,7 @@ function App() {
     const [tab, setTab] = useState("panel");
     const [showChangePin, setShowChangePin] = useState(false);
     const [showChangeAdminPasscode, setShowChangeAdminPasscode] = useState(false);
+    const [showBackup, setShowBackup] = useState(false);
 
     function loginRole(chosenRole) {
         const next = { mode: chosenRole === "ogretmen" ? "teacher" : "admin", role: chosenRole, teacherId: null };
@@ -581,7 +642,8 @@ function App() {
                 React.createElement("div", { className: "flex items-center gap-2 flex-wrap" },
                     auth.mode === "admin" ? (React.createElement(React.Fragment, null,
                         React.createElement("span", { className: "text-sm", style: { background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "6px 10px" } }, role === "kurucu" ? "Kurucu" : "Müdür"),
-                        React.createElement("button", { onClick: () => setShowChangeAdminPasscode(true), className: "text-sm", style: { background: "transparent", color: "white", border: "1px solid rgba(255,255,255,0.4)", borderRadius: 8, padding: "6px 10px", cursor: "pointer" } }, "Şifre Değiştir"))) : (React.createElement(React.Fragment, null,
+                        React.createElement("button", { onClick: () => setShowChangeAdminPasscode(true), className: "text-sm", style: { background: "transparent", color: "white", border: "1px solid rgba(255,255,255,0.4)", borderRadius: 8, padding: "6px 10px", cursor: "pointer" } }, "Şifre Değiştir"),
+                        React.createElement("button", { onClick: () => setShowBackup(true), className: "text-sm", style: { background: "transparent", color: "white", border: "1px solid rgba(255,255,255,0.4)", borderRadius: 8, padding: "6px 10px", cursor: "pointer" } }, "Yedekle"))) : (React.createElement(React.Fragment, null,
                         React.createElement("span", { className: "text-sm", style: { background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "6px 10px" } },
                             "Öğretmen: ", (teachers.find(t => t.id === activeTeacherId) || {}).name || "—"),
                         React.createElement("button", { onClick: () => setShowChangePin(true), className: "text-sm", style: { background: "transparent", color: "white", border: "1px solid rgba(255,255,255,0.4)", borderRadius: 8, padding: "6px 10px", cursor: "pointer" } }, "PIN Değiştir"))),
@@ -591,6 +653,7 @@ function App() {
                     if (t) setStaff(staff.map(s => s.id === t.id ? Object.assign(Object.assign({}, s), { pin: newPin }) : s));
                     setShowChangePin(false);
                 }, onClose: () => setShowChangePin(false) })),
+            showBackup && auth.mode === "admin" && (React.createElement(BackupModal, { data: { staff, students, lessons, payments, expenses, payouts }, setters: { staff: setStaff, students: setStudents, lessons: setLessons, payments: setPayments, expenses: setExpenses, payouts: setPayouts }, canRestore: role === "kurucu", onClose: () => setShowBackup(false) })),
             showChangeAdminPasscode && auth.mode === "admin" && (React.createElement(AdminPasscodeModal, { currentPasscode: role === "kurucu" ? effectiveKurucuPasscode : effectiveMudurPasscode, onSave: (newPasscode) => {
                     if (role === "kurucu") setKurucuPasscodeStored(newPasscode);
                     else setMudurPasscodeStored(newPasscode);
