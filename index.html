@@ -1826,6 +1826,8 @@ function RaporTab({ payments, payouts, expenses }) {
 
     const { cur, birikmisHavale, birikmisNakit, birikmisToplam, isCurrentOrFuture } = stats;
     const ayGelir = cur.payHavale + cur.payNakit;
+    const giderHavale = cur.payoutHavale + cur.expHavale;
+    const giderNakit = cur.payoutNakit + cur.expNakit;
 
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Aylık Özet", title: "Kasa & Finansal Rapor", action: React.createElement("select", { style: Object.assign(Object.assign({}, inputStyle), { width: "auto" }), value: month, onChange: e => setMonth(e.target.value) }, months.map(m => React.createElement("option", { key: m, value: m }, monthLabel(m)))) }),
@@ -1843,10 +1845,9 @@ function RaporTab({ payments, payouts, expenses }) {
                 subtitle: "Banka eşleşmeli gelirler" 
             }),
             React.createElement(StatCard, { 
-                label: "Bu Ayın Net Akışı", 
-                value: fmtTL(Math.abs(cur.netTotal)), 
-                tone: cur.netTotal >= 0 ? "success" : "danger",
-                subtitle: cur.netTotal >= 0 ? "Bu ay kârda" : "Bu ay zararda"
+                label: "Bu Ayın Giderleri", 
+                value: fmtTL(giderHavale + giderNakit), 
+                subtitle: `Nakit: ${fmtTL(giderNakit)} | EFT: ${fmtTL(giderHavale)}`
             }),
             React.createElement(StatCard, { 
                 label: "TOPLAM KASA TUTARI", 
