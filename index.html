@@ -573,7 +573,7 @@ function App() {
     useEffect(() => {
         if (!auth) return;
         const validTabs = auth.role === "kurucu" ? ["panel", "personel", "ogrenciler", "dersler", "odemeler", "hakedis", "giderler", "rapor"]
-            : auth.role === "mudur" ? ["panel", "personel", "ogrenciler", "dersler", "odemeler", "hakedis", "giderler"]
+            : auth.role === "mudur" ? ["panel", "personel", "ogrenciler", "dersler", "odemeler", "hakedis", "giderler", "rapor"]
                 : ["ogretmen-dersler", "ogretmen-hakedis"];
         if (!validTabs.includes(tab)) setTab(validTabs[0]);
     }, [auth]);
@@ -614,6 +614,28 @@ function App() {
         if (toAdd.length > 0) setLessons([...lessons, ...toAdd]);
     }, [lessons, students, setLessons]);
 
+    // Aynı öğrenci + aynı gün + aynı tür (telafi/normal) mükerrer kayıtları tek kayda indirir
+    useEffect(() => {
+        if (!lessonsLoaded || !lessons || lessons.length < 2) return;
+        const rank = (l) => (l.status && l.status !== "bekliyor") ? 0 : 1;
+        const keep = new Map();
+        lessons.forEach(l => {
+            const key = l.studentId + "|" + l.date + "|" + (l.isTelafi ? "T" : "R");
+            const cur = keep.get(key);
+            if (!cur || rank(l) < rank(cur)) keep.set(key, l);
+        });
+        if (keep.size === lessons.length) return;
+        const remap = {};
+        lessons.forEach(l => {
+            const key = l.studentId + "|" + l.date + "|" + (l.isTelafi ? "T" : "R");
+            const k = keep.get(key);
+            if (k && k.id !== l.id) remap[l.id] = k.id;
+        });
+        const keptIds = new Set(Array.from(keep.values()).map(l => l.id));
+        const next = lessons.filter(l => keptIds.has(l.id)).map(l => (l.linkedTo && remap[l.linkedTo]) ? Object.assign(Object.assign({}, l), { linkedTo: remap[l.linkedTo] }) : l);
+        setLessons(next);
+    }, [lessons, lessonsLoaded]);
+
     if (!allLoaded) return React.createElement("div", { className: "min-h-screen flex items-center justify-center", style: { color: C.inkSoft, background: C.bg } }, "Veriler yükleniyor…");
     if (!auth) return React.createElement(LoginScreen, { staff: staff, kurucuPasscode: effectiveKurucuPasscode, mudurPasscode: effectiveMudurPasscode, onLoginRole: loginRole, onLoginTeacher: loginTeacher });
 
@@ -628,7 +650,7 @@ function App() {
     const TABS_MUDUR = [
         { k: "panel", t: "Panel" }, { k: "personel", t: "Personel" }, { k: "ogrenciler", t: "Öğrenciler" },
         { k: "dersler", t: "Ders Takvimi" }, { k: "odemeler", t: "Ödemeler" }, { k: "hakedis", t: "Hakedişler" },
-        { k: "giderler", t: "Giderler & Harici Gelir" }
+        { k: "giderler", t: "Giderler & Harici Gelir" }, { k: "rapor", t: "Kâr/Zarar" }
     ];
     const TABS_OGRETMEN = [{ k: "ogretmen-dersler", t: "Derslerim" }, { k: "ogretmen-hakedis", t: "Hakedişim" }];
     const tabs = role === "kurucu" ? TABS_KURUCU : role === "mudur" ? TABS_MUDUR : TABS_OGRETMEN;
@@ -1213,15 +1235,24 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     const telafiMinDate = telafiOrigDate ? addDays(telafiOrigDate, 1) : null;
     const telafiMaxDate = telafiOrigDate ? addDays(telafiOrigDate, 6) : null;
 
+    const telafiBusyRef = useRef(false);
     function confirmMazeret() {
+        if (telafiBusyRef.current) return;
         if (!telafiDate) { alert("Telafi ders günü seçin."); return; }
         if (telafiOrigDate && telafiDate <= telafiOrigDate) { alert("Telafi tarihi mazeret tarihinden önce olamaz."); return; }
         if (telafiMaxDate && telafiDate > telafiMaxDate) { alert("Telafi tarihi 6 gün içinde seçilmelidir."); return; }
         const orig = lessons.find(l => l.id === telafiFor);
         if (!orig) return;
+        telafiBusyRef.current = true;
+        setTimeout(() => { telafiBusyRef.current = false; }, 1500);
         resetPayoutIfPaid(orig.teacherId, orig.isTelafi ? weekKeyOf(fromISODate(orig.date)) : orig.weekKey);
-        const updated = lessons.map(l => l.id === telafiFor ? Object.assign(Object.assign({}, l), { status: "mazeretli" }) : l);
-        updated.push({ id: uid("ders"), studentId: orig.studentId, teacherId: orig.teacherId, date: telafiDate, weekKey: weekKeyOf(fromISODate(telafiDate)), status: "bekliyor", isTelafi: true, linkedTo: orig.id, telafiForDate: orig.date });
+        // Bu derse zaten bağlı telafi varsa ve henüz işlenmemişse (bekliyor), çiftlenmesin diye kaldırılır
+        const base = lessons.filter(l => !(l.isTelafi && l.linkedTo === orig.id && l.status === "bekliyor"));
+        const updated = base.map(l => l.id === telafiFor ? Object.assign(Object.assign({}, l), { status: "mazeretli" }) : l);
+        const dup = updated.find(l => l.isTelafi && l.studentId === orig.studentId && l.date === telafiDate);
+        if (!dup) {
+            updated.push({ id: uid("ders"), studentId: orig.studentId, teacherId: orig.teacherId, date: telafiDate, weekKey: weekKeyOf(fromISODate(telafiDate)), status: "bekliyor", isTelafi: true, linkedTo: orig.id, telafiForDate: orig.date });
+        }
         setLessons(updated);
         setTelafiFor(null);
         setTelafiOrigDate(null);
