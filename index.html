@@ -692,7 +692,7 @@ function App() {
             tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses, payouts, teachers, role }),
             tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses }),
             tab === "ogretmen-dersler" && (activeTeacherId
-                ? React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId: activeTeacherId, canMarkPas: false, payouts, setPayouts, payments })
+                ? React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId: activeTeacherId, canMarkPas: false, payouts, setPayouts, payments, studentCredit })
                 : React.createElement(EmptyState, { text: "Üstteki menüden bir öğretmen seçin." })),
             tab === "ogretmen-hakedis" && (activeTeacherId
                 ? React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts, onlyTeacherId: activeTeacherId })
@@ -1150,7 +1150,7 @@ function Row({ label, value }) { return React.createElement("div", { className: 
     React.createElement("span", { className: "font-medium" }, value)); }
 
 /* ---------------- Ders Takvimi & Yoklama Tab ---------------- */
-function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId, canMarkPas, payouts, setPayouts, payments }) {
+function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId, canMarkPas, payouts, setPayouts, payments, studentCredit }) {
     const [weekKey, setWeekKey] = useState(currentWeekKey());
     const [telafiFor, setTelafiFor] = useState(null);
     const [telafiDate, setTelafiDate] = useState("");
@@ -1278,6 +1278,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                     React.createElement("tr", null,
                         React.createElement(Th, null, "Tarih"),
                         React.createElement(Th, null, "Öğrenci"),
+                        React.createElement(Th, null, "Veli / Telefon"),
                         React.createElement(Th, null, "Öğretmen"),
                         React.createElement(Th, null, "Tür"),
                         React.createElement(Th, null, "Durum"),
@@ -1304,6 +1305,11 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                     return (React.createElement("tr", { key: first.id },
                         React.createElement(Td, { style: monoFont }, ...dateNodes),
                         React.createElement(Td, null, st.name),
+                        React.createElement(Td, null,
+                            st.parentName && React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, st.parentName),
+                            st.phone ? React.createElement("a", { href: "tel:" + st.phone, style: Object.assign(Object.assign({}, monoFont), { color: C.primary, textDecoration: "none" }) }, st.phone) : "—",
+                            (onlyTeacherId && studentCredit && st.phone && studentCredit(st.id) <= 1) && React.createElement("div", { className: "mt-1" },
+                                React.createElement(WaButton, { phone: st.phone, label: "Aidat Hatırlat", message: aidatHatirlatMsg(st.name, studentCredit(st.id)) }))),
                         React.createElement(Td, null, tc ? tc.name : "—"),
                         React.createElement(Td, null, st.courseType === "bireysel" ? "Bireysel" : "Grup"),
                         React.createElement(Td, null,
