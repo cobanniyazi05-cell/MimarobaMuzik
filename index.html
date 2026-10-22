@@ -722,6 +722,7 @@ function PanelTab({ staff, students, lessons, payments, expenses, studentCredit,
     const buAyHavale = buAyOdemeler.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
 
     const buAyHariciGelir = (expenses || []).filter(e => e.type === "gelir" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
+    const buAyHariciNakitPanel = (expenses || []).filter(e => e.type === "gelir" && e.method === "nakit" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
 
     const bugunGunAdi = GUN_TR[(new Date().getDay() + 6) % 7];
     const cifGunluOgrenciler = aktifOgrenci.filter(s => s.weeklyDayIndex2 !== undefined && s.weeklyDayIndex2 !== null && s.weeklyDayIndex2 !== "");
@@ -761,7 +762,7 @@ function PanelTab({ staff, students, lessons, payments, expenses, studentCredit,
                 React.createElement("span", { style: { color: C.inkSoft } }, "Elden (Nakit): ", React.createElement("strong", { style: { color: C.ink } }, fmtTL(buAyNakit))),
                 React.createElement("span", { style: { color: C.inkSoft } }, "·"),
                 React.createElement("span", { style: { color: C.inkSoft } }, "EFT / Havale: ", React.createElement("strong", { style: { color: C.ink } }, fmtTL(buAyHavale)))),
-            buAyHariciGelir > 0 && React.createElement("div", { className: "mt-2 pt-1 text-xs", style: { color: C.success } }, `+ ${fmtTL(buAyHariciGelir)} Harici Banka Geliri`)));
+            buAyHariciGelir > 0 && React.createElement("div", { className: "mt-2 pt-1 text-xs", style: { color: C.success } }, `+ ${fmtTL(buAyHariciGelir)} Harici Gelir (Banka: ${fmtTL(buAyHariciGelir - buAyHariciNakitPanel)} | Nakit: ${fmtTL(buAyHariciNakitPanel)})`)));
                 
     const borcluListItems = borcluOgrenciler.map(s => React.createElement("li", { key: s.id, className: "flex justify-between items-center gap-2 py-1", style: { borderBottom: "1px solid " + C.line } },
         React.createElement("span", { className: "font-medium" }, s.name),
@@ -1630,6 +1631,7 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
     const [incomeDesc, setIncomeDesc] = useState("");
     const [incomeAmount, setIncomeAmount] = useState("");
     const [incomeDate, setIncomeDate] = useState(toISODate(new Date()));
+    const [incomeMethod, setIncomeMethod] = useState("havale");
 
     function addExpense() {
         if (!desc.trim() || !amount) return;
@@ -1649,7 +1651,7 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
         setExpenses([...expenses, { 
             id: uid("gel"), 
             type: "gelir", 
-            method: "havale", 
+            method: incomeMethod === "nakit" ? "nakit" : "havale", 
             description: incomeDesc, 
             amount: Number(incomeAmount), 
             date: incomeDate 
@@ -1682,6 +1684,8 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
     
     const buAyGiderToplam = sorted.filter(e => e.type !== "gelir" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
     const buAyHariciGelirToplam = sorted.filter(e => e.type === "gelir" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
+    const buAyHariciNakit = sorted.filter(e => e.type === "gelir" && e.method === "nakit" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
+    const buAyHariciBanka = buAyHariciGelirToplam - buAyHariciNakit;
 
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Finans", title: "Giderler & Harici Gelirler" }),
@@ -1689,9 +1693,9 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20, borderLeft: "4px solid " + C.success }) },
             React.createElement("div", { className: "flex justify-between items-center flex-wrap gap-2 mb-2" },
                 React.createElement("h3", { className: "text-lg", style: displayFont }, "Harici Gelir Ekle"),
-                React.createElement("span", { className: "text-xs font-semibold px-2 py-1", style: { background: C.successBg, color: C.success, borderRadius: 6 } }, "Banka Hesabı Eşleşmesi")),
-            React.createElement("p", { className: "text-xs mb-3 font-medium", style: { color: C.inkSoft } }, "banka hesabıyla eşleşmesi için miktar ekle"),
-            React.createElement("div", { className: "grid md:grid-cols-4 gap-3 items-end" },
+                React.createElement("span", { className: "text-xs font-semibold px-2 py-1", style: { background: C.successBg, color: C.success, borderRadius: 6 } }, incomeMethod === "nakit" ? "Nakit Kasaya Eklenecek" : "Banka Hesabına Eklenecek")),
+            React.createElement("p", { className: "text-xs mb-3 font-medium", style: { color: C.inkSoft } }, "Gelirin banka hesabına mı yoksa eldeki nakit kasaya mı ekleneceğini seçin; Kâr/Zarar sekmesinde ilgili kasaya yansır."),
+            React.createElement("div", { className: "grid md:grid-cols-5 gap-3 items-end" },
                 React.createElement("div", { className: "md:col-span-2" },
                     React.createElement("label", { style: labelStyle }, "Gelir Açıklaması"),
                     React.createElement("input", { style: inputStyle, type: "text", value: incomeDesc, onChange: e => setIncomeDesc(e.target.value), placeholder: "Örn: Faiz, iade, harici havale…" })),
@@ -1699,10 +1703,15 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
                     React.createElement("label", { style: labelStyle }, "Tutar (₺)"),
                     React.createElement("input", { style: inputStyle, type: "number", value: incomeAmount, onChange: e => setIncomeAmount(e.target.value) })),
                 React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Gelir Nereye Eklensin?"),
+                    React.createElement("select", { style: inputStyle, value: incomeMethod, onChange: e => setIncomeMethod(e.target.value) },
+                        React.createElement("option", { value: "havale" }, "Banka Hesabı (EFT / Havale)"),
+                        React.createElement("option", { value: "nakit" }, "Eldeki Nakit Kasa"))),
+                React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Tarih"),
                     React.createElement("input", { style: inputStyle, type: "date", value: incomeDate, onChange: e => setIncomeDate(e.target.value) }))),
             React.createElement("div", { className: "flex justify-between items-center mt-3 pt-3", style: { borderTop: "1px dashed " + C.line } },
-                React.createElement("span", { className: "text-xs", style: { color: C.inkSoft } }, `Bu ayki toplam harici banka geliri: ${fmtTL(buAyHariciGelirToplam)}`),
+                React.createElement("span", { className: "text-xs", style: { color: C.inkSoft } }, `Bu ayki harici gelir: ${fmtTL(buAyHariciGelirToplam)} (Banka: ${fmtTL(buAyHariciBanka)} | Nakit: ${fmtTL(buAyHariciNakit)})`),
                 React.createElement("button", { style: btnStyle("success"), onClick: addIncome }, "+ Harici Geliri Kaydet"))),
 
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20 }) },
@@ -1796,7 +1805,10 @@ function RaporTab({ payments, payouts, expenses }) {
             const mPayHavale = mPayments.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
             const mPayNakit = mPayments.filter(p => p.method === "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
 
-            const mHarici = (expenses || []).filter(e => e.type === "gelir" && monthKeyOf(e.date) === mKey).reduce((a, e) => a + Number(e.amount || 0), 0);
+            const mHariciList = (expenses || []).filter(e => e.type === "gelir" && monthKeyOf(e.date) === mKey);
+            const mHariciNakit = mHariciList.filter(e => e.method === "nakit").reduce((a, e) => a + Number(e.amount || 0), 0);
+            const mHariciHavale = mHariciList.filter(e => e.method !== "nakit").reduce((a, e) => a + Number(e.amount || 0), 0);
+            const mHarici = mHariciNakit + mHariciHavale;
 
             const mPayouts = payouts.filter(p => p.paid && p.paidDate && monthKeyOf(p.paidDate) === mKey);
             const mPayoutHavale = mPayouts.filter(p => p.method !== "nakit").reduce((a, p) => a + Number(p.amount || 0), 0);
@@ -1806,8 +1818,8 @@ function RaporTab({ payments, payouts, expenses }) {
             const mExpHavale = mExp.filter(e => e.method === "havale").reduce((a, e) => a + Number(e.amount || 0), 0);
             const mExpNakit = mExp.filter(e => e.method !== "havale").reduce((a, e) => a + Number(e.amount || 0), 0);
 
-            const netHavale = (mPayHavale + mHarici) - (mPayoutHavale + mExpHavale);
-            const netNakit = mPayNakit - (mPayoutNakit + mExpNakit);
+            const netHavale = (mPayHavale + mHariciHavale) - (mPayoutHavale + mExpHavale);
+            const netNakit = (mPayNakit + mHariciNakit) - (mPayoutNakit + mExpNakit);
 
             return {
                 netHavale,
@@ -1816,6 +1828,8 @@ function RaporTab({ payments, payouts, expenses }) {
                 payHavale: mPayHavale,
                 payNakit: mPayNakit,
                 harici: mHarici,
+                hariciHavale: mHariciHavale,
+                hariciNakit: mHariciNakit,
                 payoutHavale: mPayoutHavale,
                 payoutNakit: mPayoutNakit,
                 expHavale: mExpHavale,
@@ -1838,10 +1852,10 @@ function RaporTab({ payments, payouts, expenses }) {
             const sum = (arr) => arr.reduce((a, r) => a + Number(r.amount || 0), 0);
 
             birikmisHavale = BASELINE.banka
-                + sum(P.filter(p => p.method !== "nakit")) + sum(H)
+                + sum(P.filter(p => p.method !== "nakit")) + sum(H.filter(e => e.method !== "nakit"))
                 - sum(O.filter(p => p.method !== "nakit")) - sum(X.filter(e => e.method === "havale"));
             birikmisNakit = BASELINE.nakit
-                + sum(P.filter(p => p.method === "nakit"))
+                + sum(P.filter(p => p.method === "nakit")) + sum(H.filter(e => e.method === "nakit"))
                 - sum(O.filter(p => p.method === "nakit")) - sum(X.filter(e => e.method !== "havale"));
         } else {
             birikmisHavale = cur.netHavale;
@@ -1877,7 +1891,7 @@ function RaporTab({ payments, payouts, expenses }) {
             React.createElement(StatCard, { 
                 label: "Harici Gelirler", 
                 value: fmtTL(cur.harici),
-                subtitle: "Banka eşleşmeli gelirler" 
+                subtitle: `Nakit: ${fmtTL(cur.hariciNakit)} | EFT: ${fmtTL(cur.hariciHavale)}` 
             }),
             React.createElement(StatCard, { 
                 label: "Bu Ayın Giderleri", 
@@ -1899,7 +1913,7 @@ function RaporTab({ payments, payouts, expenses }) {
                     React.createElement(Pill, { tone: "primary" }, "Banka Kasası")),
                 React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisHavale >= 0 ? C.primary : C.danger }) }, fmtTLd(birikmisHavale)),
                 React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, 
-                    "4 Ekim 2026 itibarıyla 35.195,70 ₺ tabanı üzerinden; bu tarihten sonra girilen EFT aidatları ve harici banka gelirleri eklenip EFT ile ödenen gider/hakedişler düşülerek anlık hesaplanır.")),
+                    "4 Ekim 2026 itibarıyla 35.195,70 ₺ tabanı üzerinden; bu tarihten sonra girilen EFT aidatları ve bankaya eklenen harici gelirler eklenip EFT ile ödenen gider/hakedişler düşülerek anlık hesaplanır.")),
 
             React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 18, borderLeft: "5px solid " + C.accent }) },
                 React.createElement("div", { className: "flex justify-between items-center mb-1" },
@@ -1907,7 +1921,7 @@ function RaporTab({ payments, payouts, expenses }) {
                     React.createElement(Pill, { tone: "accent" }, "Nakit Kasa")),
                 React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisNakit >= 0 ? C.success : C.danger }) }, fmtTLd(birikmisNakit)),
                 React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, 
-                    "4 Ekim 2026 itibarıyla 9.900 ₺ tabanı üzerinden; bu tarihten sonra elden alınan nakit aidatlar eklenip elden nakit ödenen gider/hakedişler düşülerek anlık hesaplanır."))),
+                    "4 Ekim 2026 itibarıyla 9.900 ₺ tabanı üzerinden; bu tarihten sonra elden alınan nakit aidatlar ve nakit kasaya eklenen harici gelirler eklenip elden nakit ödenen gider/hakedişler düşülerek anlık hesaplanır."))),
 
         // Finansal Rapor Tablosu
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
@@ -1921,8 +1935,8 @@ function RaporTab({ payments, payouts, expenses }) {
                         React.createElement(Td, { className: "text-right", style: monoFont }, fmtTL(ayGelir))),
                     cur.harici > 0 && React.createElement("tr", null,
                         React.createElement(Td, null, 
-                            React.createElement("div", { className: "font-medium", style: { color: C.success } }, "Bu ayki harici banka gelirleri"),
-                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, "Banka hesabıyla eşleşen ek girdiler")),
+                            React.createElement("div", { className: "font-medium", style: { color: C.success } }, "Bu ayki harici gelirler"),
+                            React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, `Elden (Nakit): ${fmtTL(cur.hariciNakit)} | EFT/Havale: ${fmtTL(cur.hariciHavale)}`)),
                         React.createElement(Td, { className: "text-right", style: Object.assign(Object.assign({}, monoFont), { color: C.success }) }, "+ " + fmtTL(cur.harici))),
                     React.createElement("tr", null,
                         React.createElement(Td, null, 
