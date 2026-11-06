@@ -1264,6 +1264,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     const [weekKey, setWeekKey] = useState(currentWeekKey());
     const [telafiFor, setTelafiFor] = useState(null);
     const [telafiDate, setTelafiDate] = useState("");
+    const [telafiTime, setTelafiTime] = useState("");
     const [telafiOrigDate, setTelafiOrigDate] = useState(null);
     const [showPasWarning, setShowPasWarning] = useState(false);
     const [selectedStudentHistoryId, setSelectedStudentHistoryId] = useState("");
@@ -1315,6 +1316,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
             setTelafiFor(lessonId);
             setTelafiOrigDate(orig ? orig.date : null);
             setTelafiDate("");
+            setTelafiTime((lessons.find(x => x.id === lessonId) || {}).time || "");
             return;
         }
         const lesson = lessons.find(l => l.id === lessonId);
@@ -1349,6 +1351,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     function confirmMazeret() {
         if (telafiBusyRef.current) return;
         if (!telafiDate) { alert("Telafi ders günü seçin."); return; }
+        if (!telafiTime) { alert("Telafi ders saatini seçin."); return; }
         if (telafiOrigDate && telafiDate <= telafiOrigDate) { alert("Telafi tarihi mazeret tarihinden önce olamaz."); return; }
         if (telafiMaxDate && telafiDate > telafiMaxDate) { alert("Telafi tarihi 6 gün içinde seçilmelidir."); return; }
         const orig = lessons.find(l => l.id === telafiFor);
@@ -1361,7 +1364,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
         const updated = base.map(l => l.id === telafiFor ? Object.assign(Object.assign({}, l), { status: "mazeretli" }) : l);
         const dup = updated.find(l => l.isTelafi && l.studentId === orig.studentId && l.date === telafiDate);
         if (!dup) {
-            updated.push({ id: uid("ders"), studentId: orig.studentId, teacherId: orig.teacherId, date: telafiDate, weekKey: weekKeyOf(fromISODate(telafiDate)), status: "bekliyor", isTelafi: true, linkedTo: orig.id, telafiForDate: orig.date, time: orig.time || "" });
+            updated.push({ id: uid("ders"), studentId: orig.studentId, teacherId: orig.teacherId, date: telafiDate, weekKey: weekKeyOf(fromISODate(telafiDate)), status: "bekliyor", isTelafi: true, linkedTo: orig.id, telafiForDate: orig.date, time: telafiTime || orig.time || "" });
         }
         setLessons(updated);
         setTelafiFor(null);
@@ -1457,6 +1460,10 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
             React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "Telafi dersi için sonraki 6 gün içinden (" + (telafiMinDate ? fmtDateTR(telafiMinDate) : "") + " – " + (telafiMaxDate ? fmtDateTR(telafiMaxDate) : "") + ") bir gün seçin."),
             React.createElement("label", { style: labelStyle }, "Telafi Tarihi"),
             React.createElement("input", { style: inputStyle, type: "date", value: telafiDate, min: telafiMinDate, max: telafiMaxDate, onChange: e => setTelafiDate(e.target.value) }),
+            React.createElement("label", { style: Object.assign({}, labelStyle, { marginTop: 12 }) }, "Telafi Ders Saati" + (telafiDate ? " (" + GUNLER[(fromISODate(telafiDate).getDay() + 6) % 7] + ")" : "")),
+            React.createElement("select", { style: inputStyle, value: telafiTime, onChange: e => setTelafiTime(e.target.value) },
+                React.createElement("option", { value: "" }, "Saat seçin…"),
+                DERS_SAATLERI.map(t => React.createElement("option", { key: t, value: t }, t))),
             React.createElement("div", { className: "flex justify-end gap-2 pt-4" },
                 React.createElement("button", { style: btnStyle("ghost"), onClick: () => { setTelafiFor(null); setTelafiOrigDate(null); } }, "Vazgeç"),
                 React.createElement("button", { style: btnStyle("primary"), onClick: confirmMazeret }, "Kaydet")))),
