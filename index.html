@@ -1577,6 +1577,11 @@ const RUSEN_AYAZ_MUAFIYET = 6;
 function isRusenAyaz(teacherName) {
     return !!teacherName && teacherName.trim().toLocaleLowerCase("tr") === "ruşen ayaz";
 }
+function isGrupStudent(st) {
+    // Ekranda "bireysel" dışındaki her tür Grup görünür; hakediş de aynı şekilde yorumlar (büyük/küçük harf ve boşluk fark etmez)
+    const ct = String((st && st.courseType) || "").trim().toLocaleLowerCase("tr");
+    return ct !== "" && ct !== "bireysel";
+}
 function isSerdarUcar(teacherName) {
     const n = (teacherName || "").trim().toLocaleLowerCase("tr");
     return n.includes("serdar") && (n.includes("uçar") || n.includes("ucar"));
@@ -1592,8 +1597,8 @@ function computeTeacherWeek(lessons, students, teacherId, weekKey, teacherName) 
         const st = students.find(s => s.id === l.studentId);
         let pay = 0;
         if (l.status === "yapildi") {
-            let dersUcreti = st && st.courseType === "grup" ? OGRETMEN_GRUP_OGRENCI : OGRETMEN_BIREYSEL_SAAT;
-            if (serdar && !(st && st.courseType === "grup") && l.date >= YENI_UCRET_BASLANGIC) dersUcreti = SERDAR_UCAR_BIREYSEL_SAAT;
+            let dersUcreti = isGrupStudent(st) ? OGRETMEN_GRUP_OGRENCI : OGRETMEN_BIREYSEL_SAAT;
+            if (serdar && !isGrupStudent(st) && l.date >= YENI_UCRET_BASLANGIC) dersUcreti = SERDAR_UCAR_BIREYSEL_SAAT;
             if (special) {
                 yapilanSayisi++;
                 if (yapilanSayisi > RUSEN_AYAZ_MUAFIYET) pay = dersUcreti;
@@ -1601,7 +1606,7 @@ function computeTeacherWeek(lessons, students, teacherId, weekKey, teacherName) 
                 pay = dersUcreti;
             }
         } else if (l.status === "mazeretsiz" && l.date >= YENI_UCRET_BASLANGIC) {
-            pay = (st && st.courseType === "grup") ? MAZERETSIZ_HAKEDIS_GRUP : MAZERETSIZ_HAKEDIS;
+            pay = isGrupStudent(st) ? MAZERETSIZ_HAKEDIS_GRUP : MAZERETSIZ_HAKEDIS;
         }
         total += pay;
         return { lesson: l, student: st, pay };
@@ -1734,7 +1739,7 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
                         return React.createElement("tr", { key: first.id },
                             React.createElement(Td, { style: monoFont }, ...dateNodes),
                             React.createElement(Td, null, student ? student.name : "—"),
-                            React.createElement(Td, null, student && student.courseType === "grup" ? "Grup" : "Bireysel"),
+                            React.createElement(Td, null, isGrupStudent(student) ? "Grup" : "Bireysel"),
                             React.createElement(Td, null,
                                 last.status === "yapildi" && React.createElement(Pill, { tone: "success" }, "Yapıldı"),
                                 last.status === "mazeretli" && React.createElement(Pill, { tone: "accent" }, "Mazeretli (ücretsiz)"),
