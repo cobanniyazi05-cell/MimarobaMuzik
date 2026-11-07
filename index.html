@@ -183,7 +183,8 @@ const ODEME_KREDI = 4;
 const ODEME_KREDI_CIFT = 8;
 const OGRETMEN_BIREYSEL_SAAT = 650;
 const YENI_UCRET_BASLANGIC = "2026-11-02";      // Bu tarihten (dahil) itibaren geçerli
-const MAZERETSIZ_HAKEDIS = 200;                  // Mazeretsiz gelmeyen öğrenci dersi için öğretmene yansıyan tutar
+const MAZERETSIZ_HAKEDIS = 200;                  // Bireysel ders: mazeretsiz gelmeyen öğrenci için öğretmene yansıyan tutar
+const MAZERETSIZ_HAKEDIS_GRUP = 100;             // Grup dersi: mazeretsiz gelmeyen öğrenci için öğretmene yansıyan tutar
 const SERDAR_UCAR_BIREYSEL_SAAT = 800;           // Sadece Serdar Uçar: ders başı ücret
 const DERS_SAATLERI = (() => { const a = []; for (let h = 8; h <= 21; h++) { a.push(String(h).padStart(2, "0") + ":00"); a.push(String(h).padStart(2, "0") + ":30"); } return a; })();
 const OGRETMEN_GRUP_OGRENCI = 450;
@@ -1613,7 +1614,7 @@ function computeTeacherWeek(lessons, students, teacherId, weekKey, teacherName) 
                 pay = dersUcreti;
             }
         } else if (l.status === "mazeretsiz" && l.date >= YENI_UCRET_BASLANGIC) {
-            pay = MAZERETSIZ_HAKEDIS;
+            pay = (st && st.courseType === "grup") ? MAZERETSIZ_HAKEDIS_GRUP : MAZERETSIZ_HAKEDIS;
         }
         total += pay;
         return { lesson: l, student: st, pay };
