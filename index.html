@@ -20,7 +20,13 @@
   ::-webkit-scrollbar-thumb{background:#D8D0C0; border-radius:4px;}
   .lesson-table{border-collapse:separate;border-spacing:0 10px;padding:0 8px;}
   .lesson-table tbody td{background:#FFFFFF;border-top:2px solid #4A3F5E !important;border-bottom:2px solid #4A3F5E !important;}
-  .lesson-table tbody tr:nth-child(even) td{background:#F4F0F9;}
+  .lesson-table tbody tr.lday-0 td{background:#FFF1F1;}
+  .lesson-table tbody tr.lday-1 td{background:#FFF6E8;}
+  .lesson-table tbody tr.lday-2 td{background:#FFFCE3;}
+  .lesson-table tbody tr.lday-3 td{background:#EFF9EC;}
+  .lesson-table tbody tr.lday-4 td{background:#E9F7F6;}
+  .lesson-table tbody tr.lday-5 td{background:#EDF2FF;}
+  .lesson-table tbody tr.lday-6 td{background:#F5EEFF;}
   .lesson-table tbody td:first-child{border-left:2px solid #4A3F5E !important;border-radius:10px 0 0 10px;}
   .lesson-table tbody td:last-child{border-right:2px solid #4A3F5E !important;border-radius:0 10px 10px 0;}
   input:focus, select:focus, textarea:focus, button:focus-visible{ outline: 2px solid #C79A2B; outline-offset: 1px; }
@@ -704,7 +710,7 @@ function App() {
             tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit, staff, role }),
             tab === "hakedis" && React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts }),
             tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses, payouts, teachers, role }),
-            tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses, kasaAdj, setKasaAdj, canAdjust: role === "kurucu" }),
+            tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses, kasaAdj, setKasaAdj, canAdjust: role === "kurucu", adjBy: "Kurucu (Niyazi Çoban)" }),
             tab === "ogretmen-dersler" && (activeTeacherId
                 ? React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId: activeTeacherId, canMarkPas: false, payouts, setPayouts, payments, studentCredit })
                 : React.createElement(EmptyState, { text: "Üstteki menüden bir öğretmen seçin." })),
@@ -1406,14 +1412,16 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                         const clWeekKey = weekKeyOf(fromISODate(cl.date));
                         dateNodes.push(React.createElement("span", { key: cl.id },
                             fmtDateTR(cl.date),
-                            lessonTimeOf(cl, studentById(cl.studentId), byId) && React.createElement("span", { style: { marginLeft: 6, fontSize: 13, color: "#1B1526", fontWeight: 800 } }, lessonTimeOf(cl, studentById(cl.studentId), byId)),
+                            lessonTimeOf(cl, studentById(cl.studentId), byId) && React.createElement("span", { style: { marginLeft: 8, fontSize: 19, color: "#D61F1F", fontWeight: 800 } }, lessonTimeOf(cl, studentById(cl.studentId), byId)),
                             cl.isTelafi && React.createElement("span", { className: "ml-1" }, React.createElement(Pill, { tone: "accent" }, "Telafi")),
                             clWeekKey !== weekKey && React.createElement("span", { className: "ml-1" }, React.createElement(Pill, { tone: "neutral" }, "Başka hafta"))));
                     });
 
                     const isNextWeekTelafi = last.isTelafi && last.status === "bekliyor" && weekKeyOf(fromISODate(last.date)) > weekKey;
 
-                    return (React.createElement("tr", { key: first.id },
+                    const anchorLesson = chain.slice().reverse().find(cl => weekKeyOf(fromISODate(cl.date)) === weekKey) || last;
+                    const dayCls = "lday-" + ((fromISODate(anchorLesson.date).getDay() + 6) % 7);
+                    return (React.createElement("tr", { key: first.id, className: dayCls },
                         React.createElement(Td, { style: Object.assign({}, monoFont, { fontWeight: 800, fontSize: 16, color: "#1B1526", whiteSpace: "nowrap" }) }, ...dateNodes),
                         React.createElement(Td, null, st.name),
                         React.createElement(Td, null,
@@ -1914,7 +1922,7 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
 }
 
 /* ---------------- Kâr / Zarar Rapor Tab (Doğrudan Gerçek Kasa Tabanlı Hesaplama) ---------------- */
-function RaporTab({ payments, payouts, expenses, kasaAdj, setKasaAdj, canAdjust }) {
+function RaporTab({ payments, payouts, expenses, kasaAdj, setKasaAdj, canAdjust, adjBy }) {
     const [adjTarget, setAdjTarget] = useState(null);
     const [adjValue, setAdjValue] = useState("");
     const [adjNote, setAdjNote] = useState("");
@@ -2052,7 +2060,7 @@ function RaporTab({ payments, payouts, expenses, kasaAdj, setKasaAdj, canAdjust 
         if (delta === 0) { setAdjTarget(null); return; }
         const label = adjTarget === "banka" ? "Banka" : "Nakit";
         if (!confirm(label + " tutarı " + fmtTLd(cur0) + " yerine " + fmtTLd(nv) + " olarak düzeltilecek (fark: " + (delta > 0 ? "+" : "−") + fmtTLd(Math.abs(delta)) + "). Bundan sonraki ödeme ve harcamalar bu tutar üzerinden devam eder. Onaylıyor musunuz?")) return;
-        setKasaAdj([...(kasaAdj || []), { id: uid("kd"), date: toISODate(new Date()), target: adjTarget, before: cur0, after: nv, delta, note: adjNote.trim(), by: "Niyazi Çoban" }]);
+        setKasaAdj([...(kasaAdj || []), { id: uid("kd"), date: toISODate(new Date()), target: adjTarget, before: cur0, after: nv, delta, note: adjNote.trim(), by: adjBy || "" }]);
         setAdjTarget(null);
     }
     const giderHavale = cur.payoutHavale + cur.expHavale;
@@ -2134,7 +2142,7 @@ function RaporTab({ payments, payouts, expenses, kasaAdj, setKasaAdj, canAdjust 
                         React.createElement(Td, null, a.target === "banka" ? "Banka" : "Nakit"),
                         React.createElement(Td, { style: monoFont }, fmtTLd(a.before) + " → " + fmtTLd(a.after)),
                         React.createElement(Td, { style: Object.assign(Object.assign({}, monoFont), { color: a.delta >= 0 ? C.success : C.danger }) }, (a.delta >= 0 ? "+ " : "− ") + fmtTLd(Math.abs(a.delta))),
-                        React.createElement(Td, { className: "text-xs" }, a.note || "")))))),
+                        React.createElement(Td, { className: "text-xs" }, (a.by ? a.by + (a.note ? " — " : "") : "") + (a.note || ""))))))),
 
         // Finansal Rapor Tablosu
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
