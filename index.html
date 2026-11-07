@@ -177,7 +177,6 @@ const ODEME_KREDI = 4;
 const ODEME_KREDI_CIFT = 8;
 const OGRETMEN_BIREYSEL_SAAT = 650;
 const YENI_UCRET_BASLANGIC = "2026-11-02";      // Bu tarihten (dahil) itibaren geçerli
-const MAZERETSIZ_HAKEDIS_GRUP = 100;            // Grup dersinde mazeretsiz için öğretmene yansıyan tutar
 const MAZERETSIZ_HAKEDIS = 200;                  // Mazeretsiz gelmeyen öğrenci dersi için öğretmene yansıyan tutar
 const SERDAR_UCAR_BIREYSEL_SAAT = 800;           // Sadece Serdar Uçar: ders başı ücret
 const DERS_SAATLERI = (() => { const a = []; for (let h = 8; h <= 21; h++) { a.push(String(h).padStart(2, "0") + ":00"); a.push(String(h).padStart(2, "0") + ":30"); } return a; })();
@@ -484,7 +483,7 @@ function BackupModal({ data, setters, canRestore, onClose }) {
     const fileRef = useRef(null);
     const KEYS = [
         ["staff", "Personel"], ["students", "Öğrenci"], ["lessons", "Ders"],
-        ["payments", "Ödeme"], ["expenses", "Gider/Gelir"], ["payouts", "Hakediş"]
+        ["payments", "Ödeme"], ["expenses", "Gider/Gelir"], ["payouts", "Hakediş"], ["kasaAdj", "Kasa düzeltme"]
     ];
     function buildBackup() {
         const out = { app: "MimarobaMuzik", version: 1, createdAt: new Date().toISOString(), data: {} };
@@ -545,6 +544,7 @@ function App() {
     const [payments, setPayments, paymentsLoaded] = useFirestoreList("payments-list");
     const [expenses, setExpenses, expensesLoaded] = useFirestoreList("expenses-list");
     const [payouts, setPayouts, payoutsLoaded] = useFirestoreList("payouts-list");
+    const [kasaAdj, setKasaAdj] = useFirestoreList("kasa-duzeltme-list");
     const [kurucuPasscodeStored, setKurucuPasscodeStored, kurucuPasscodeLoaded] = useFirestoreDoc("kurucu-passcode", null);
     const [mudurPasscodeStored, setMudurPasscodeStored, mudurPasscodeLoaded] = useFirestoreDoc("mudur-passcode", null);
     const effectiveKurucuPasscode = kurucuPasscodeStored || ADMIN_PASSCODE;
@@ -689,7 +689,7 @@ function App() {
                     if (t) setStaff(staff.map(s => s.id === t.id ? Object.assign(Object.assign({}, s), { pin: newPin }) : s));
                     setShowChangePin(false);
                 }, onClose: () => setShowChangePin(false) })),
-            showBackup && auth.mode === "admin" && (React.createElement(BackupModal, { data: { staff, students, lessons, payments, expenses, payouts }, setters: { staff: setStaff, students: setStudents, lessons: setLessons, payments: setPayments, expenses: setExpenses, payouts: setPayouts }, canRestore: role === "kurucu", onClose: () => setShowBackup(false) })),
+            showBackup && auth.mode === "admin" && (React.createElement(BackupModal, { data: { staff, students, lessons, payments, expenses, payouts, kasaAdj }, setters: { staff: setStaff, students: setStudents, lessons: setLessons, payments: setPayments, expenses: setExpenses, payouts: setPayouts, kasaAdj: setKasaAdj }, canRestore: role === "kurucu", onClose: () => setShowBackup(false) })),
             showChangeAdminPasscode && auth.mode === "admin" && (React.createElement(AdminPasscodeModal, { currentPasscode: role === "kurucu" ? effectiveKurucuPasscode : effectiveMudurPasscode, onSave: (newPasscode) => {
                     if (role === "kurucu") setKurucuPasscodeStored(newPasscode);
                     else setMudurPasscodeStored(newPasscode);
@@ -704,7 +704,7 @@ function App() {
             tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit, staff, role }),
             tab === "hakedis" && React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts }),
             tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses, payouts, teachers, role }),
-            tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses }),
+            tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses, kasaAdj, setKasaAdj, canAdjust: role === "kurucu" }),
             tab === "ogretmen-dersler" && (activeTeacherId
                 ? React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, onlyTeacherId: activeTeacherId, canMarkPas: false, payouts, setPayouts, payments, studentCredit })
                 : React.createElement(EmptyState, { text: "Üstteki menüden bir öğretmen seçin." })),
@@ -1031,10 +1031,10 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                     nextLessons = nextLessons.map(l => (l.studentId === editing && l.status === "bekliyor" && l.date >= todayIso) ? Object.assign(Object.assign({}, l), { teacherId: normalized.teacherId }) : l);
                 }
                 {
-                    const weekStartT = dateForWeekday(currentWeekKey(), 0);
+                    const todayT = toISODate(new Date());
                     let changedTime = false;
                     const mapped = nextLessons.map(l => {
-                        if (l.studentId !== editing || l.isTelafi || l.date < weekStartT) return l;
+                        if (l.studentId !== editing || l.isTelafi || l.status !== "bekliyor" || l.date < todayT) return l;
                         const wd = (fromISODate(l.date).getDay() + 6) % 7;
                         let t = l.time || "";
                         if (Number(normalized.weeklyDayIndex) === wd) t = normalized.weeklyTime || "";
@@ -1265,15 +1265,6 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     const [weekKey, setWeekKey] = useState(currentWeekKey());
     const [telafiFor, setTelafiFor] = useState(null);
     const [telafiDate, setTelafiDate] = useState("");
-    const [telafiTime, setTelafiTime] = useState("");
-    const [saatFor, setSaatFor] = useState(null);
-    const [saatValue, setSaatValue] = useState("");
-    function openSaat(l) { setSaatFor(l.id); setSaatValue(lessonTimeOf(l, studentById(l.studentId))); }
-    function saveSaat() {
-        if (!saatFor) return;
-        setLessons(lessons.map(l => l.id === saatFor ? Object.assign({}, l, { time: saatValue }) : l));
-        setSaatFor(null);
-    }
     const [telafiOrigDate, setTelafiOrigDate] = useState(null);
     const [showPasWarning, setShowPasWarning] = useState(false);
     const [selectedStudentHistoryId, setSelectedStudentHistoryId] = useState("");
@@ -1283,10 +1274,9 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     let weekLessons = lessons.filter(l => l.weekKey === weekKey || (l.isTelafi && l.date && weekKeyOf(fromISODate(l.date)) === weekKey));
     if (onlyTeacherId) weekLessons = weekLessons.filter(l => l.teacherId === onlyTeacherId);
     weekLessons = weekLessons.filter(l => !isDepartedLesson(l, studentById(l.studentId)));
-    weekLessons = weekLessons.slice().sort((a, b) => a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || ""));
-
     const byId = {};
     lessons.forEach(l => { byId[l.id] = l; });
+    weekLessons = weekLessons.slice().sort((a, b) => a.date.localeCompare(b.date) || lessonTimeOf(a, studentById(a.studentId), byId).localeCompare(lessonTimeOf(b, studentById(b.studentId), byId)));
     const telafiByOriginal = {};
     lessons.forEach(l => { if (l.isTelafi && l.linkedTo) telafiByOriginal[l.linkedTo] = l; });
 
@@ -1325,7 +1315,6 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
             setTelafiFor(lessonId);
             setTelafiOrigDate(orig ? orig.date : null);
             setTelafiDate("");
-            setTelafiTime((lessons.find(x => x.id === lessonId) || {}).time || "");
             return;
         }
         const lesson = lessons.find(l => l.id === lessonId);
@@ -1360,7 +1349,6 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     function confirmMazeret() {
         if (telafiBusyRef.current) return;
         if (!telafiDate) { alert("Telafi ders günü seçin."); return; }
-        if (!telafiTime) { alert("Telafi ders saatini seçin."); return; }
         if (telafiOrigDate && telafiDate <= telafiOrigDate) { alert("Telafi tarihi mazeret tarihinden önce olamaz."); return; }
         if (telafiMaxDate && telafiDate > telafiMaxDate) { alert("Telafi tarihi 6 gün içinde seçilmelidir."); return; }
         const orig = lessons.find(l => l.id === telafiFor);
@@ -1373,7 +1361,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
         const updated = base.map(l => l.id === telafiFor ? Object.assign(Object.assign({}, l), { status: "mazeretli" }) : l);
         const dup = updated.find(l => l.isTelafi && l.studentId === orig.studentId && l.date === telafiDate);
         if (!dup) {
-            updated.push({ id: uid("ders"), studentId: orig.studentId, teacherId: orig.teacherId, date: telafiDate, weekKey: weekKeyOf(fromISODate(telafiDate)), status: "bekliyor", isTelafi: true, linkedTo: orig.id, telafiForDate: orig.date, time: telafiTime || orig.time || "" });
+            updated.push({ id: uid("ders"), studentId: orig.studentId, teacherId: orig.teacherId, date: telafiDate, weekKey: weekKeyOf(fromISODate(telafiDate)), status: "bekliyor", isTelafi: true, linkedTo: orig.id, telafiForDate: orig.date, time: orig.time || "" });
         }
         setLessons(updated);
         setTelafiFor(null);
@@ -1416,12 +1404,11 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                     chain.forEach((cl, idx) => {
                         if (idx > 0) dateNodes.push(React.createElement("span", { key: "ok-" + cl.id, className: "mx-1" }, "→"));
                         const clWeekKey = weekKeyOf(fromISODate(cl.date));
-                        const clTime = lessonTimeOf(cl, st);
-                        dateNodes.push(React.createElement("span", { key: cl.id, style: { display: "inline-block", verticalAlign: "top" } },
+                        dateNodes.push(React.createElement("span", { key: cl.id },
                             fmtDateTR(cl.date),
+                            lessonTimeOf(cl, studentById(cl.studentId), byId) && React.createElement("span", { style: { marginLeft: 6, fontSize: 13, color: "#1B1526", fontWeight: 800 } }, lessonTimeOf(cl, studentById(cl.studentId), byId)),
                             cl.isTelafi && React.createElement("span", { className: "ml-1" }, React.createElement(Pill, { tone: "accent" }, "Telafi")),
-                            clWeekKey !== weekKey && React.createElement("span", { className: "ml-1" }, React.createElement(Pill, { tone: "neutral" }, "Başka hafta")),
-                            React.createElement("div", { className: "text-xs", style: { color: clTime ? C.primary : C.inkSoft, fontWeight: 700, marginTop: 2 } }, clTime ? "🕒 " + clTime : "Saat atanmamış")));
+                            clWeekKey !== weekKey && React.createElement("span", { className: "ml-1" }, React.createElement(Pill, { tone: "neutral" }, "Başka hafta"))));
                     });
 
                     const isNextWeekTelafi = last.isTelafi && last.status === "bekliyor" && weekKeyOf(fromISODate(last.date)) > weekKey;
@@ -1439,16 +1426,13 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                                 ? React.createElement(Pill, { tone: "warning" }, "Haftaya") 
                                 : React.createElement(Pill, { tone: statusMeta[last.status].tone }, statusMeta[last.status].label)),
                         React.createElement(Td, { className: "text-right whitespace-nowrap" }, last.status === "bekliyor" ? (React.createElement("div", { className: "flex gap-1 justify-end flex-wrap" },
-                            React.createElement("button", { style: btnStyle("ghost"), onClick: () => openSaat(last) }, lessonTimeOf(last, st) ? "Saat: " + lessonTimeOf(last, st) : "Saat Ata"),
                             React.createElement("button", { style: btnStyle("primary"), onClick: () => setStatus(last.id, "yapildi") }, "Yapıldı"),
                             React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(last.id, "mazeretli") }, "Mazeretli"),
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(last.id, "mazeretsiz") }, "Mazeretsiz"),
                             React.createElement("button", { style: btnStyle("warning"), onClick: () => setStatus(last.id, "pas") }, "Pas"),
                             parent && React.createElement("button", { style: btnStyle("ghost"), onClick: () => undoStatus(parent) }, "Mazereti İptal Et"),
                             canMarkPas && React.createElement("button", { style: btnStyle("ghost"), onClick: () => removeLesson(last) }, "Sil"),
-                            React.createElement(WaButton, { phone: st.phone, label: "Hatırlat", message: "Merhaba, Mimaroba Müzik Kursu mesajıdır. " + st.name + " adlı öğrencimizin " + fmtDateTR(last.date) + " tarihli dersini hatırlatmak isteriz. Mutlu ve müzikli günler dileriz." }))) : (React.createElement("div", { className: "flex gap-1 justify-end flex-wrap" },
-                            React.createElement("button", { style: btnStyle("ghost"), onClick: () => openSaat(last) }, lessonTimeOf(last, st) ? "Saat: " + lessonTimeOf(last, st) : "Saat Ata"),
-                            React.createElement("button", { style: btnStyle("ghost"), onClick: () => undoStatus(last) }, "Geri Al"))))));
+                            React.createElement(WaButton, { phone: st.phone, label: "Hatırlat", message: "Merhaba, Mimaroba Müzik Kursu mesajıdır. " + st.name + " adlı öğrencimizin " + fmtDateTR(last.date) + " tarihli dersini hatırlatmak isteriz. Mutlu ve müzikli günler dileriz." }))) : (React.createElement("button", { style: btnStyle("ghost"), onClick: () => undoStatus(last) }, "Geri Al")))));
                 }))))),
 
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 18, marginTop: 24 }) },
@@ -1469,27 +1453,10 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                         React.createElement(Pill, { tone: l.tone }, fmtDateTR(l.date)))))
             ) : React.createElement("p", { className: "text-xs", style: { color: C.inkSoft } }, "Görüntülemek için lütfen yukarıdan bir öğrenci seçin.")),
 
-        saatFor && (() => {
-            const sl = lessons.find(x => x.id === saatFor);
-            const sst = sl ? studentById(sl.studentId) : null;
-            return React.createElement(Modal, { title: "Ders Saati Ata", onClose: () => setSaatFor(null) },
-                React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, (sst ? sst.name + " — " : "") + (sl ? fmtDateTR(sl.date) + " (" + GUNLER[(fromISODate(sl.date).getDay() + 6) % 7] + ")" : "") + " tarihli ders için saat seçin. Sadece bu ders değişir."),
-                React.createElement("label", { style: labelStyle }, "Ders Saati"),
-                React.createElement("select", { style: inputStyle, value: saatValue, onChange: e => setSaatValue(e.target.value) },
-                    React.createElement("option", { value: "" }, "Saat yok"),
-                    DERS_SAATLERI.map(t => React.createElement("option", { key: t, value: t }, t))),
-                React.createElement("div", { className: "flex justify-end gap-2 pt-4" },
-                    React.createElement("button", { style: btnStyle("ghost"), onClick: () => setSaatFor(null) }, "Vazgeç"),
-                    React.createElement("button", { style: btnStyle("primary"), onClick: saveSaat }, "Kaydet")));
-        })(),
         telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => { setTelafiFor(null); setTelafiOrigDate(null); } },
             React.createElement("p", { className: "text-sm mb-3", style: { color: C.inkSoft } }, "Telafi dersi için sonraki 6 gün içinden (" + (telafiMinDate ? fmtDateTR(telafiMinDate) : "") + " – " + (telafiMaxDate ? fmtDateTR(telafiMaxDate) : "") + ") bir gün seçin."),
             React.createElement("label", { style: labelStyle }, "Telafi Tarihi"),
             React.createElement("input", { style: inputStyle, type: "date", value: telafiDate, min: telafiMinDate, max: telafiMaxDate, onChange: e => setTelafiDate(e.target.value) }),
-            React.createElement("label", { style: Object.assign({}, labelStyle, { marginTop: 12 }) }, "Telafi Ders Saati" + (telafiDate ? " (" + GUNLER[(fromISODate(telafiDate).getDay() + 6) % 7] + ")" : "")),
-            React.createElement("select", { style: inputStyle, value: telafiTime, onChange: e => setTelafiTime(e.target.value) },
-                React.createElement("option", { value: "" }, "Saat seçin…"),
-                DERS_SAATLERI.map(t => React.createElement("option", { key: t, value: t }, t))),
             React.createElement("div", { className: "flex justify-end gap-2 pt-4" },
                 React.createElement("button", { style: btnStyle("ghost"), onClick: () => { setTelafiFor(null); setTelafiOrigDate(null); } }, "Vazgeç"),
                 React.createElement("button", { style: btnStyle("primary"), onClick: confirmMazeret }, "Kaydet")))),
@@ -1602,20 +1569,17 @@ const RUSEN_AYAZ_MUAFIYET = 6;
 function isRusenAyaz(teacherName) {
     return !!teacherName && teacherName.trim().toLocaleLowerCase("tr") === "ruşen ayaz";
 }
-function lessonTimeOf(l, st) {
-    // Dersin kendi saati varsa o; yoksa öğrenci kartındaki haftalık saat (gün eşleşirse)
-    if (l && l.time) return l.time;
-    if (!l || l.isTelafi || !st || !l.date) return "";
+function lessonTimeOf(l, student, byIdMap) {
+    if (l.time) return l.time;
+    if (!student) return "";
+    if (l.isTelafi) {
+        const o = byIdMap && l.linkedTo ? byIdMap[l.linkedTo] : null;
+        return o ? lessonTimeOf(o, student, byIdMap) : "";
+    }
     const wd = (fromISODate(l.date).getDay() + 6) % 7;
-    const has = v => v !== undefined && v !== null && v !== "";
-    if (has(st.weeklyDayIndex) && Number(st.weeklyDayIndex) === wd) return st.weeklyTime || "";
-    if (has(st.weeklyDayIndex2) && Number(st.weeklyDayIndex2) === wd) return st.weeklyTime2 || "";
+    if (student.weeklyDayIndex !== "" && student.weeklyDayIndex !== undefined && student.weeklyDayIndex !== null && Number(student.weeklyDayIndex) === wd) return student.weeklyTime || "";
+    if (student.weeklyDayIndex2 !== "" && student.weeklyDayIndex2 !== undefined && student.weeklyDayIndex2 !== null && Number(student.weeklyDayIndex2) === wd) return student.weeklyTime2 || "";
     return "";
-}
-function isGrupStudent(st) {
-    // Ekranda "bireysel" dışındaki her tür Grup görünür; hakediş de aynı şekilde yorumlar (büyük/küçük harf ve boşluk fark etmez)
-    const ct = String((st && st.courseType) || "").trim().toLocaleLowerCase("tr");
-    return ct !== "" && ct !== "bireysel";
 }
 function isSerdarUcar(teacherName) {
     const n = (teacherName || "").trim().toLocaleLowerCase("tr");
@@ -1632,8 +1596,8 @@ function computeTeacherWeek(lessons, students, teacherId, weekKey, teacherName) 
         const st = students.find(s => s.id === l.studentId);
         let pay = 0;
         if (l.status === "yapildi") {
-            let dersUcreti = isGrupStudent(st) ? OGRETMEN_GRUP_OGRENCI : OGRETMEN_BIREYSEL_SAAT;
-            if (serdar && !isGrupStudent(st) && l.date >= YENI_UCRET_BASLANGIC) dersUcreti = SERDAR_UCAR_BIREYSEL_SAAT;
+            let dersUcreti = st && st.courseType === "grup" ? OGRETMEN_GRUP_OGRENCI : OGRETMEN_BIREYSEL_SAAT;
+            if (serdar && !(st && st.courseType === "grup") && l.date >= YENI_UCRET_BASLANGIC) dersUcreti = SERDAR_UCAR_BIREYSEL_SAAT;
             if (special) {
                 yapilanSayisi++;
                 if (yapilanSayisi > RUSEN_AYAZ_MUAFIYET) pay = dersUcreti;
@@ -1641,7 +1605,7 @@ function computeTeacherWeek(lessons, students, teacherId, weekKey, teacherName) 
                 pay = dersUcreti;
             }
         } else if (l.status === "mazeretsiz" && l.date >= YENI_UCRET_BASLANGIC) {
-            pay = isGrupStudent(st) ? MAZERETSIZ_HAKEDIS_GRUP : MAZERETSIZ_HAKEDIS;
+            pay = MAZERETSIZ_HAKEDIS;
         }
         total += pay;
         return { lesson: l, student: st, pay };
@@ -1774,7 +1738,7 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
                         return React.createElement("tr", { key: first.id },
                             React.createElement(Td, { style: monoFont }, ...dateNodes),
                             React.createElement(Td, null, student ? student.name : "—"),
-                            React.createElement(Td, null, isGrupStudent(student) ? "Grup" : "Bireysel"),
+                            React.createElement(Td, null, student && student.courseType === "grup" ? "Grup" : "Bireysel"),
                             React.createElement(Td, null,
                                 last.status === "yapildi" && React.createElement(Pill, { tone: "success" }, "Yapıldı"),
                                 last.status === "mazeretli" && React.createElement(Pill, { tone: "accent" }, "Mazeretli (ücretsiz)"),
@@ -1950,7 +1914,10 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
 }
 
 /* ---------------- Kâr / Zarar Rapor Tab (Doğrudan Gerçek Kasa Tabanlı Hesaplama) ---------------- */
-function RaporTab({ payments, payouts, expenses }) {
+function RaporTab({ payments, payouts, expenses, kasaAdj, setKasaAdj, canAdjust }) {
+    const [adjTarget, setAdjTarget] = useState(null);
+    const [adjValue, setAdjValue] = useState("");
+    const [adjNote, setAdjNote] = useState("");
     const months = useMemo(() => {
         const set = new Set();
         payments.forEach(p => set.add(monthKeyOf(p.date)));
@@ -2037,10 +2004,13 @@ function RaporTab({ payments, payouts, expenses }) {
             const X = (expenses || []).filter(e => e.type !== "gelir" && afterBaseline(e, e.date) && okMonth(e.date));
             const sum = (arr) => arr.reduce((a, r) => a + Number(r.amount || 0), 0);
 
-            birikmisHavale = BASELINE.banka
+            const A = (kasaAdj || []).filter(a => a.date && monthKeyOf(a.date) <= month);
+            const adjSum = (t) => A.filter(a => a.target === t).reduce((x, a) => x + Number(a.delta || 0), 0);
+
+            birikmisHavale = BASELINE.banka + adjSum("banka")
                 + sum(P.filter(p => p.method !== "nakit")) + sum(H.filter(e => e.method !== "nakit"))
                 - sum(O.filter(p => p.method !== "nakit")) - sum(X.filter(e => e.method === "havale"));
-            birikmisNakit = BASELINE.nakit
+            birikmisNakit = BASELINE.nakit + adjSum("nakit")
                 + sum(P.filter(p => p.method === "nakit")) + sum(H.filter(e => e.method === "nakit"))
                 - sum(O.filter(p => p.method === "nakit")) - sum(X.filter(e => e.method !== "havale"));
         } else {
@@ -2057,10 +2027,34 @@ function RaporTab({ payments, payouts, expenses }) {
             birikmisToplam,
             isCurrentOrFuture: month >= BASELINE.month
         };
-    }, [payments, payouts, expenses, month, months]);
+    }, [payments, payouts, expenses, kasaAdj, month, months]);
 
     const { cur, birikmisHavale, birikmisNakit, birikmisToplam, isCurrentOrFuture } = stats;
     const ayGelir = cur.payHavale + cur.payNakit;
+    const thisMonthKey = monthKeyOf(toISODate(new Date()));
+    const canEditNow = !!canAdjust && month === thisMonthKey;
+    function parseMoney(v) {
+        let t = String(v).trim().replace(/\s/g, "");
+        if (!t) return NaN;
+        if (t.indexOf(",") >= 0) t = t.replace(/\./g, "").replace(",", ".");
+        return Number(t);
+    }
+    function openAdjust(target) {
+        setAdjTarget(target);
+        setAdjValue(String(Math.round((target === "banka" ? birikmisHavale : birikmisNakit) * 100) / 100).replace(".", ","));
+        setAdjNote("");
+    }
+    function saveAdjust() {
+        const cur0 = adjTarget === "banka" ? birikmisHavale : birikmisNakit;
+        const nv = parseMoney(adjValue);
+        if (!isFinite(nv)) { alert("Geçerli bir tutar girin."); return; }
+        const delta = Math.round((nv - cur0) * 100) / 100;
+        if (delta === 0) { setAdjTarget(null); return; }
+        const label = adjTarget === "banka" ? "Banka" : "Nakit";
+        if (!confirm(label + " tutarı " + fmtTLd(cur0) + " yerine " + fmtTLd(nv) + " olarak düzeltilecek (fark: " + (delta > 0 ? "+" : "−") + fmtTLd(Math.abs(delta)) + "). Bundan sonraki ödeme ve harcamalar bu tutar üzerinden devam eder. Onaylıyor musunuz?")) return;
+        setKasaAdj([...(kasaAdj || []), { id: uid("kd"), date: toISODate(new Date()), target: adjTarget, before: cur0, after: nv, delta, note: adjNote.trim(), by: "Niyazi Çoban" }]);
+        setAdjTarget(null);
+    }
     const giderHavale = cur.payoutHavale + cur.expHavale;
     const giderNakit = cur.payoutNakit + cur.expNakit;
 
@@ -2096,7 +2090,9 @@ function RaporTab({ payments, payouts, expenses }) {
             React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 18, borderLeft: "5px solid " + C.primary }) },
                 React.createElement("div", { className: "flex justify-between items-center mb-1" },
                     React.createElement("span", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, "Banka Hesabındaki Tutar (EFT / Havale)"),
-                    React.createElement(Pill, { tone: "primary" }, "Banka Kasası")),
+                    React.createElement("div", { className: "flex items-center gap-2" },
+                        canEditNow && React.createElement("button", { style: btnStyle("ghost"), onClick: () => openAdjust("banka") }, "Tutarı Düzelt"),
+                        React.createElement(Pill, { tone: "primary" }, "Banka Kasası"))),
                 React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisHavale >= 0 ? C.primary : C.danger }) }, fmtTLd(birikmisHavale)),
                 React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, 
                     "4 Ekim 2026 itibarıyla 35.195,70 ₺ tabanı üzerinden; bu tarihten sonra girilen EFT aidatları ve bankaya eklenen harici gelirler eklenip EFT ile ödenen gider/hakedişler düşülerek anlık hesaplanır.")),
@@ -2104,10 +2100,41 @@ function RaporTab({ payments, payouts, expenses }) {
             React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 18, borderLeft: "5px solid " + C.accent }) },
                 React.createElement("div", { className: "flex justify-between items-center mb-1" },
                     React.createElement("span", { className: "text-xs font-semibold uppercase", style: { color: C.inkSoft } }, "Eldeki Nakit Kasa Tutarı"),
-                    React.createElement(Pill, { tone: "accent" }, "Nakit Kasa")),
+                    React.createElement("div", { className: "flex items-center gap-2" },
+                        canEditNow && React.createElement("button", { style: btnStyle("ghost"), onClick: () => openAdjust("nakit") }, "Tutarı Düzelt"),
+                        React.createElement(Pill, { tone: "accent" }, "Nakit Kasa"))),
                 React.createElement("div", { className: "text-3xl mt-2 font-bold", style: Object.assign(Object.assign({}, monoFont), { color: birikmisNakit >= 0 ? C.success : C.danger }) }, fmtTLd(birikmisNakit)),
                 React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, 
                     "4 Ekim 2026 itibarıyla 9.900 ₺ tabanı üzerinden; bu tarihten sonra elden alınan nakit aidatlar ve nakit kasaya eklenen harici gelirler eklenip elden nakit ödenen gider/hakedişler düşülerek anlık hesaplanır."))),
+
+        adjTarget && React.createElement(Modal, { title: (adjTarget === "banka" ? "Banka" : "Nakit") + " Tutarını Düzelt", onClose: () => setAdjTarget(null) },
+            React.createElement("div", { className: "space-y-3" },
+                React.createElement("p", { className: "text-xs", style: { color: C.inkSoft } }, "Programdaki tutar gerçek tutarla uyuşmuyorsa gerçek tutarı girin. Fark bir düzeltme kaydı olarak eklenir, geçmiş işlemler silinmez. Bundan sonraki ödeme, gider ve hakedişler bu tutarın üzerine eklenip düşülmeye devam eder."),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Programdaki şu anki tutar"),
+                    React.createElement("div", { className: "font-bold", style: monoFont }, fmtTLd(adjTarget === "banka" ? birikmisHavale : birikmisNakit))),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Gerçek tutar (₺)"),
+                    React.createElement("input", { style: inputStyle, type: "text", inputMode: "decimal", value: adjValue, onChange: e => setAdjValue(e.target.value), placeholder: "Örn: 35195,70" })),
+                React.createElement("div", null,
+                    React.createElement("label", { style: labelStyle }, "Açıklama (isteğe bağlı)"),
+                    React.createElement("input", { style: inputStyle, type: "text", value: adjNote, onChange: e => setAdjNote(e.target.value), placeholder: "Örn: Sayım sonucu" })),
+                React.createElement("div", { className: "flex justify-end gap-2 pt-2" },
+                    React.createElement("button", { style: btnStyle("ghost"), onClick: () => setAdjTarget(null) }, "Vazgeç"),
+                    React.createElement("button", { style: btnStyle("primary"), onClick: saveAdjust }, "Düzelt")))),
+
+        (canAdjust && !canEditNow) && React.createElement("p", { className: "text-xs mb-3", style: { color: C.inkSoft } }, "Banka ve nakit tutarını düzeltmek için ay seçiminden içinde bulunduğunuz ayı seçin."),
+
+        (canAdjust && (kasaAdj || []).length > 0) && React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20 }) },
+            React.createElement("h3", { className: "text-lg mb-2", style: displayFont }, "Kasa Düzeltme Kayıtları"),
+            React.createElement("table", { className: "w-full" },
+                React.createElement("tbody", null,
+                    (kasaAdj || []).slice().reverse().slice(0, 10).map(a => React.createElement("tr", { key: a.id },
+                        React.createElement(Td, { style: monoFont }, fmtDateTR(a.date)),
+                        React.createElement(Td, null, a.target === "banka" ? "Banka" : "Nakit"),
+                        React.createElement(Td, { style: monoFont }, fmtTLd(a.before) + " → " + fmtTLd(a.after)),
+                        React.createElement(Td, { style: Object.assign(Object.assign({}, monoFont), { color: a.delta >= 0 ? C.success : C.danger }) }, (a.delta >= 0 ? "+ " : "− ") + fmtTLd(Math.abs(a.delta))),
+                        React.createElement(Td, { className: "text-xs" }, a.note || "")))))),
 
         // Finansal Rapor Tablosu
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16 }) },
