@@ -753,7 +753,7 @@ function App() {
         React.createElement("main", { className: "max-w-6xl mx-auto px-4 py-6" },
             tab === "panel" && React.createElement(PanelTab, { staff, students, lessons, payments, expenses, studentCredit, setStudents }),
             tab === "personel" && React.createElement(PersonelTab, { staff, setStaff, students, setStudents, lessons, setLessons, studentCredit }),
-            tab === "ogrenciler" && React.createElement(OgrencilerTab, { students, setStudents, teachers, payments, setPayments, studentCredit, lessons, setLessons }),
+            tab === "ogrenciler" && React.createElement(OgrencilerTab, { students, setStudents, teachers, payments, setPayments, studentCredit, lessons, setLessons, role }),
             tab === "dersler" && React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, canMarkPas: true, payouts, setPayouts, payments }),
             tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit, staff, role, lessons }),
             tab === "hakedis" && React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts }),
@@ -1022,7 +1022,9 @@ function PersonelTab({ staff, setStaff, students, setStudents, lessons, setLesso
 }
 
 /* ---------------- Öğrenciler Tab ---------------- */
-function OgrencilerTab({ students, setStudents, teachers, payments, setPayments, studentCredit, lessons, setLessons }) {
+function OgrencilerTab({ students, setStudents, teachers, payments, setPayments, studentCredit, lessons, setLessons, role }) {
+    const canAdjustCredit = role === "kurucu";
+    const [adjDelta, setAdjDelta] = useState("");
     const [showForm, setShowForm] = useState(false);
     const [detail, setDetail] = useState(null);
     const [filter, setFilter] = useState("aktif");
@@ -1044,6 +1046,7 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
             firstLessonDate: s.firstLessonDate || s.registerDate || toISODate(new Date())
         }));
         setEditing(s.id);
+        setAdjDelta("");
         setShowForm(true);
     }
 
@@ -1053,7 +1056,7 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
         if (editing) {
             const original = students.find(s => s.id === editing);
             const normalized = Object.assign({}, form, {
-                id: editing, fee: Number(form.fee), creditAdjustment: Number(form.creditAdjustment) || 0,
+                id: editing, fee: Number(form.fee), creditAdjustment: canAdjustCredit ? (Number(form.creditAdjustment) || 0) : (Number(original && original.creditAdjustment) || 0),
                 firstLessonDate: normalizedFirstLesson,
                 leftDate: form.status === "ayrildi" ? (form.leftDate || toISODate(new Date())) : "",
             });
@@ -1106,7 +1109,7 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                 id: uid("ogr"),
                 fee: Number(form.fee),
                 firstLessonDate: normalizedFirstLesson,
-                creditAdjustment: Number(form.creditAdjustment) || 0
+                creditAdjustment: canAdjustCredit ? (Number(form.creditAdjustment) || 0) : 0
             });
             setStudents([...students, newStudent]);
         }
@@ -1263,9 +1266,13 @@ function OgrencilerTab({ students, setStudents, teachers, payments, setPayments,
                 editing && form.status === "ayrildi" && React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Ayrılma Tarihi"),
                     React.createElement("input", { style: inputStyle, type: "date", value: form.leftDate || toISODate(new Date()), onChange: e => setForm(Object.assign(Object.assign({}, form), { leftDate: e.target.value })) })),
-                editing && React.createElement("div", null,
-                    React.createElement("label", { style: labelStyle }, "Ders Hakkı Manuel Düzeltme (+/-)"),
-                    React.createElement("input", { style: inputStyle, type: "number", value: form.creditAdjustment, onChange: e => setForm(Object.assign(Object.assign({}, form), { creditAdjustment: e.target.value })) }))),
+                editing && canAdjustCredit && React.createElement("div", { className: "md:col-span-2" },
+                    React.createElement("label", { style: labelStyle }, "Ders Hakkı Manuel Düzeltme (sadece Kurs Sahibi)"),
+                    React.createElement("div", { className: "text-xs mb-2", style: { color: C.inkSoft } }, "Mevcut manuel düzeltme: " + ((Number(form.creditAdjustment) || 0) > 0 ? "+" : "") + (Number(form.creditAdjustment) || 0) + " ders. Değişiklik \"Değişiklikleri Kaydet\" ile işlenir."),
+                    React.createElement("div", { className: "flex gap-2 items-center flex-wrap" },
+                        React.createElement("input", { style: Object.assign(Object.assign({}, inputStyle), { maxWidth: 120 }), type: "number", inputMode: "numeric", min: "0", step: "1", placeholder: "Ders sayısı", value: adjDelta, onChange: e => setAdjDelta(e.target.value) }),
+                        React.createElement("button", { type: "button", style: btnStyle("primary"), onClick: () => { const n = Math.abs(Math.floor(Number(adjDelta))) || 0; if (!n) return; setForm(f => Object.assign({}, f, { creditAdjustment: (Number(f.creditAdjustment) || 0) + n })); setAdjDelta(""); } }, "+ Ders Ekle"),
+                        React.createElement("button", { type: "button", style: btnStyle("danger"), onClick: () => { const n = Math.abs(Math.floor(Number(adjDelta))) || 0; if (!n) return; setForm(f => Object.assign({}, f, { creditAdjustment: (Number(f.creditAdjustment) || 0) - n })); setAdjDelta(""); } }, "− Ders Azalt")))),
             React.createElement("div", { className: "flex justify-end gap-2 pt-4" },
                 React.createElement("button", { style: btnStyle("ghost"), onClick: () => setShowForm(false) }, "Vazgeç"),
                 React.createElement("button", { style: btnStyle("primary"), onClick: save }, editing ? "Değişiklikleri Kaydet" : "Kaydı Tamamla")))),
