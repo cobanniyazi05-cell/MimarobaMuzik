@@ -168,12 +168,7 @@ function WaButton({ phone, message, label, kind }) {
     return React.createElement("a", { href: link, target: "_blank", rel: "noopener noreferrer", style: Object.assign(Object.assign({}, btnStyle(kind || "success")), { textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }) }, label || "WhatsApp'ta Gönder");
 }
 function aidatHatirlatMsg(studentName, credit) {
-    const intro = "Merhaba, Mimaroba Müzik Kursu mesajıdır. " + studentName + " adlı öğrencimizin ";
-    const outro = " Mutlu ve müzikli günler dileriz.";
-    if (credit < 0) {
-        return intro + Math.abs(credit) + " ders borçlu bulunmaktadır. Yeni ayın aidatı ile birlikte, ödemesi yapılmamış derslerin ücretinin de ödenmesini rica ederiz." + outro;
-    }
-    return intro + "ders hakkı " + (credit === 0 ? "bitmiştir" : "azalmıştır") + ". Yeni ayın aidatının ödenmesini rica ederiz." + outro;
+    return "Merhaba, Mimaroba Müzik Kursu bilgilendirme mesajıdır. " + studentName + " adlı öğrencimizin ödemesi gecikmiştir. Yeni ayın aidatının ödenmesini rica ederiz. Mutlu ve Müzikli günler dileriz.";
 }
 
 const UCRET_BIREYSEL = 5400;
@@ -365,6 +360,34 @@ function calculateStudentLessonHistory(student, payments, lessons) {
         result.push(Object.assign(Object.assign({}, l), { tone, statusLabel, orderIndex: usedCount }));
     });
 
+    return result.reverse();
+}
+
+/* Öğrencinin kayıt olduğu günden itibaren işlenmiş TÜM dersleri (katıldı / mazeretli / mazeretsiz / pas) renkli listeler */
+function calculateFullLessonHistory(student, payments, lessons) {
+    if (!student) return [];
+    const totalCredits = studentPaidCredits(student, payments) + (student.creditAdjustment ? Number(student.creditAdjustment) : 0);
+    const all = (lessons || [])
+        .filter(l => l.studentId === student.id && ["yapildi", "mazeretli", "mazeretsiz", "pas"].indexOf(l.status) !== -1)
+        .slice().sort((a, b) => a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || ""));
+    let used = 0;
+    const result = all.map(l => {
+        let tone, label;
+        if (l.status === "yapildi") {
+            used++;
+            if (used <= totalCredits) { tone = "success"; label = "Katıldı"; }
+            else { tone = "danger"; label = "Katıldı (borçlu ders)"; }
+        } else if (l.status === "mazeretsiz") {
+            used++;
+            tone = "warning"; label = "Mazeretsiz (hak yandı)";
+        } else if (l.status === "mazeretli") {
+            tone = "accent"; label = "Mazeretli";
+        } else {
+            tone = "primary"; label = "Pas";
+        }
+        if (l.isTelafi) label += " – telafi";
+        return Object.assign({}, l, { tone, label });
+    });
     return result.reverse();
 }
 
@@ -1407,7 +1430,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
     };
 
     const selStudentObj = students.find(s => s.id === selectedStudentHistoryId);
-    const selStudentHistory = selStudentObj ? calculateStudentLessonHistory(selStudentObj, payments, lessons) : [];
+    const selStudentHistory = selStudentObj ? calculateFullLessonHistory(selStudentObj, payments, lessons) : [];
 
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "Yoklama", title: "Ders Takvimi", action: React.createElement("div", { className: "flex items-center gap-2" },
@@ -1471,20 +1494,29 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
 
         React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 18, marginTop: 24 }) },
             React.createElement("h3", { className: "text-lg mb-1", style: displayFont }, "Öğrenci Ders & Katılım Durumu"),
-            React.createElement("p", { className: "text-xs mb-3", style: { color: C.inkSoft } }, "Öğrencinin son aidat paketine ait derslerini ve varsa borçlu yapılan derslerini inceleyin."),
+            React.createElement("p", { className: "text-xs mb-3", style: { color: C.inkSoft } }, "Öğrencinin kayıt olduğu tarihten itibaren katıldığı, mazeretli / mazeretsiz katılmadığı ve pas işaretlenen tüm derslerini görün."),
             React.createElement("div", { className: "flex gap-2 mb-3 flex-wrap items-center" },
                 React.createElement("select", { style: Object.assign(Object.assign({}, inputStyle), { maxWidth: 300 }), value: selectedStudentHistoryId, onChange: e => setSelectedStudentHistoryId(e.target.value) },
                     React.createElement("option", { value: "" }, "Öğrenci Seçiniz…"),
                     students.map(s => React.createElement("option", { key: s.id, value: s.id }, s.name + (s.status === "ayrildi" ? " (Ayrıldı)" : "")))),
                 React.createElement("div", { className: "flex gap-2 flex-wrap text-xs ml-auto" },
-                    React.createElement(Pill, { tone: "success" }, "Yeşil: Aidat Kapsamında"),
-                    React.createElement(Pill, { tone: "warning" }, "Sarı: Mazeretsiz (Hak Yandı)"),
-                    React.createElement(Pill, { tone: "danger" }, "Kırmızı: Borçlu Ders"))),
+                    React.createElement(Pill, { tone: "success" }, "Yeşil: Katıldı"),
+                    React.createElement(Pill, { tone: "danger" }, "Kırmızı: Katıldı (borçlu ders)"),
+                    React.createElement(Pill, { tone: "warning" }, "Sarı: Mazeretsiz (hak yandı)"),
+                    React.createElement(Pill, { tone: "accent" }, "Altın: Mazeretli"),
+                    React.createElement(Pill, { tone: "primary" }, "Mor: Pas"))),
             selectedStudentHistoryId ? (
-                selStudentHistory.length === 0 ? React.createElement("p", { className: "text-xs", style: { color: C.inkSoft } }, "Önceki haklar tüketildi, bu dönem henüz işlenmiş ders yok.") :
-                React.createElement("div", { className: "flex flex-wrap gap-1.5 pt-2" },
-                    selStudentHistory.map(l => React.createElement("span", { key: l.id, title: l.statusLabel },
-                        React.createElement(Pill, { tone: l.tone }, fmtDateTR(l.date)))))
+                selStudentHistory.length === 0 ? React.createElement("p", { className: "text-xs", style: { color: C.inkSoft } }, "Bu öğrenci için henüz işlenmiş (katıldı / mazeretli / mazeretsiz / pas) ders yok.") :
+                React.createElement("div", null,
+                    React.createElement("p", { className: "text-xs mb-2", style: { color: C.inkSoft } },
+                        "Toplam " + selStudentHistory.length + " ders — Katıldı: " + selStudentHistory.filter(l => l.status === "yapildi").length +
+                        ", Mazeretli: " + selStudentHistory.filter(l => l.status === "mazeretli").length +
+                        ", Mazeretsiz: " + selStudentHistory.filter(l => l.status === "mazeretsiz").length +
+                        ", Pas: " + selStudentHistory.filter(l => l.status === "pas").length +
+                        (selStudentObj ? " (Kayıt: " + fmtDateTR(selStudentObj.registerDate) + ")" : "")),
+                    React.createElement("div", { className: "flex flex-wrap gap-1.5 pt-1" },
+                        selStudentHistory.map(l => React.createElement("span", { key: l.id, title: l.label },
+                            React.createElement(Pill, { tone: l.tone }, fmtDateTR(l.date) + " · " + l.label)))))
             ) : React.createElement("p", { className: "text-xs", style: { color: C.inkSoft } }, "Görüntülemek için lütfen yukarıdan bir öğrenci seçin.")),
 
         telafiFor && (React.createElement(Modal, { title: "Telafi Dersi Planla", onClose: () => { setTelafiFor(null); setTelafiOrigDate(null); } },
