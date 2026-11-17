@@ -289,7 +289,7 @@ function Modal({ title, onClose, children, wide }) {
 
 function EmptyState({ text }) { return React.createElement("div", { className: "text-center py-10 text-sm", style: { color: C.inkSoft } }, text); }
 function Th({ children }) { return React.createElement("th", { className: "text-left", style: { fontSize: 12, textTransform: "uppercase", letterSpacing: "0.04em", color: C.inkSoft, fontWeight: 600, padding: "8px 10px", borderBottom: "1px solid " + C.line } }, children); }
-function Td({ children, className, style }) { return React.createElement("td", { className: className, style: Object.assign({ padding: 10, borderBottom: "1px solid " + C.line, fontSize: 14, verticalAlign: "middle" }, style) }, children); }
+function Td({ children, className, style, colSpan }) { return React.createElement("td", { className: className, colSpan: colSpan, style: Object.assign({ padding: 10, borderBottom: "1px solid " + C.line, fontSize: 14, verticalAlign: "middle" }, style) }, children); }
 
 /* ---------------- Kursa Kayıt Ücreti → Ders Hakkı ---------------- */
 // Öğrenciye girilen "Kursa Kayıt Ücreti" = paket ücretidir (4 ders; haftada 2 gün alan ve ücreti 10.800 ₺ ve üzeri olanlarda 8 ders).
@@ -757,7 +757,7 @@ function App() {
             tab === "dersler" && React.createElement(DersTakvimiTab, { lessons, setLessons, students, ensureWeekLessons, teacherById, studentById, canMarkPas: true, isOwner: role === "kurucu", payouts, setPayouts, payments }),
             tab === "odemeler" && React.createElement(OdemelerTab, { students, payments, setPayments, studentCredit, staff, role, lessons }),
             tab === "hakedis" && React.createElement(HakedisTab, { lessons, students, teachers, payouts, setPayouts, canUnmark: role === "kurucu" }),
-            tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses, payouts, teachers, role }),
+            tab === "giderler" && React.createElement(GiderlerTab, { expenses, setExpenses, payouts, teachers, role, payments, students, kasaAdj }),
             tab === "ogrhakedis" && React.createElement(OgrenciHakedisTab, { students, payments, lessons }),
             tab === "rapor" && React.createElement(RaporTab, { payments, payouts, expenses, kasaAdj, setKasaAdj, canAdjust: role === "kurucu", adjBy: "Kurucu (Niyazi Çoban)" }),
             tab === "ogretmen-dersler" && (activeTeacherId
@@ -1873,7 +1873,83 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
 }
 
 /* ---------------- Giderler Tab ---------------- */
-function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
+/* ---------------- Banka / Nakit Hesap Hareketleri (ekstre) ---------------- */
+const KASA_BASELINE = { month: "2026-10", date: "2026-10-04", ts: 1791142633075, banka: 35195.70, nakit: 9900 };
+function kasaCreatedTs(rec) {
+    const m = /^[a-z]+_([0-9a-z]{8})/.exec((rec && rec.id) || "");
+    if (!m) return null;
+    const t = parseInt(m[1], 36);
+    return (t > 1.5e12 && t < 3e12) ? t : null;
+}
+function kasaAfterBaseline(rec, dateStr, tsOverride) {
+    const ts = (tsOverride !== undefined && tsOverride !== null) ? tsOverride : kasaCreatedTs(rec);
+    if (ts !== null) return ts >= KASA_BASELINE.ts;
+    return !!dateStr && dateStr > KASA_BASELINE.date;
+}
+// target: "banka" | "nakit" — Kâr/Zarar sekmesindeki kasa hesabıyla aynı kurallar; her harekette kalan tutar hesaplanır.
+function buildKasaLedger(target, data) {
+    const isBank = target === "banka";
+    const payOk = (m) => isBank ? m !== "nakit" : m === "nakit";
+    const expOk = (m) => isBank ? m === "havale" : m !== "havale";
+    const stName = (id) => { const st = (data.students || []).find(x => x.id === id); return st ? st.name : "—"; };
+    const tcName = (id) => { const t = (data.teachers || []).find(x => x.id === id); return t ? t.name : "—"; };
+    const items = [];
+    (data.payments || []).forEach(p => { if (kasaAfterBaseline(p, p.date) && payOk(p.method)) items.push({ id: p.id, date: p.date, ts: kasaCreatedTs(p), kind: "aidat", desc: "Aidat — " + stName(p.studentId), delta: Number(p.amount || 0) }); });
+    (data.expenses || []).forEach(e => {
+        if (!kasaAfterBaseline(e, e.date)) return;
+        if (e.type === "gelir") { if (payOk(e.method)) items.push({ id: e.id, date: e.date, ts: kasaCreatedTs(e), kind: "gelir", desc: e.description, delta: Number(e.amount || 0), removable: true }); }
+        else if (expOk(e.method)) items.push({ id: e.id, date: e.date, ts: kasaCreatedTs(e), kind: "gider", desc: e.description, delta: -Number(e.amount || 0), removable: true });
+    });
+    (data.payouts || []).forEach(p => {
+        if (p.paid && p.paidDate && kasaAfterBaseline(p, p.paidDate, p.paidAt === undefined ? null : p.paidAt) && payOk(p.method))
+            items.push({ id: "payout-" + p.id, date: p.paidDate, ts: p.paidAt === undefined ? null : p.paidAt, kind: "hakedis", desc: "Öğretmen Hakedişi — " + tcName(p.teacherId), delta: -Number(p.amount || 0) });
+    });
+    (data.kasaAdj || []).forEach(a => { if (a.target === target && a.date) items.push({ id: a.id, date: a.date, ts: kasaCreatedTs(a), kind: "duzeltme", desc: "Kasa düzeltme" + (a.note ? " — " + a.note : ""), delta: Number(a.delta || 0) }); });
+    items.forEach((it, i) => { it._i = i; });
+    items.sort((a, b) => a.date.localeCompare(b.date) || ((a.ts || 0) - (b.ts || 0)) || (a._i - b._i));
+    let bal = isBank ? KASA_BASELINE.banka : KASA_BASELINE.nakit;
+    const start = bal;
+    const rows = items.map(it => { bal += it.delta; return Object.assign({}, it, { balance: bal }); });
+    return { start, rows, balance: bal };
+}
+
+function KasaLedgerCard({ title, subtitle, tone, ledger, rangeFrom, rangeTo, rangeActive, onRemove }) {
+    const filtered = rangeActive ? ledger.rows.filter(r => (!rangeFrom || r.date >= rangeFrom) && (!rangeTo || r.date <= rangeTo)) : ledger.rows;
+    const visible = (rangeActive ? filtered : filtered.slice(-10)).slice().reverse();
+    const kindPill = (k) => k === "aidat" ? React.createElement(Pill, { tone: "success" }, "Aidat") : k === "gelir" ? React.createElement(Pill, { tone: "success" }, "Harici Gelir")
+        : k === "gider" ? React.createElement(Pill, { tone: "danger" }, "Gider") : k === "hakedis" ? React.createElement(Pill, { tone: "warning" }, "Hakediş") : React.createElement(Pill, { tone: "neutral" }, "Düzeltme");
+    return React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 16, marginBottom: 20, borderLeft: "4px solid " + (tone === "accent" ? C.accent : C.primary) }) },
+        React.createElement("div", { className: "flex justify-between items-center flex-wrap gap-2 mb-1" },
+            React.createElement("h3", { className: "text-lg", style: displayFont }, title),
+            React.createElement("div", { className: "text-right" },
+                React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, "Güncel Tutar"),
+                React.createElement("div", { className: "text-xl font-bold", style: Object.assign(Object.assign({}, monoFont), { color: ledger.balance < 0 ? C.danger : C.primary }) }, fmtTLd(ledger.balance)))),
+        React.createElement("p", { className: "text-xs mb-3", style: { color: C.inkSoft } }, subtitle + " " + (rangeActive ? filtered.length + " hareket gösteriliyor." : "Son " + Math.min(10, ledger.rows.length) + " hareket gösteriliyor.")),
+        React.createElement("div", { style: { overflowX: "auto" } },
+            React.createElement("table", { className: "w-full" },
+                React.createElement("thead", null, React.createElement("tr", null,
+                    React.createElement(Th, null, "Tarih"), React.createElement(Th, null, "İşlem"), React.createElement(Th, null, "Açıklama"),
+                    React.createElement(Th, null, "Giren (+)"), React.createElement(Th, null, "Çıkan (−)"), React.createElement(Th, null, "Kalan Tutar"), React.createElement(Th, null))),
+                React.createElement("tbody", null,
+                    visible.length === 0 && React.createElement("tr", null, React.createElement(Td, { colSpan: 7, style: { color: C.inkSoft } }, "Bu aralıkta hareket yok.")),
+                    visible.map(r => React.createElement("tr", { key: r.id },
+                        React.createElement(Td, { style: monoFont }, fmtDateTR(r.date)),
+                        React.createElement(Td, null, kindPill(r.kind)),
+                        React.createElement(Td, null, r.desc),
+                        React.createElement(Td, { style: Object.assign(Object.assign({}, monoFont), { color: C.success, fontWeight: 600 }) }, r.delta > 0 ? "+ " + fmtTLd(r.delta) : ""),
+                        React.createElement(Td, { style: Object.assign(Object.assign({}, monoFont), { color: C.danger, fontWeight: 600 }) }, r.delta < 0 ? "− " + fmtTLd(-r.delta) : ""),
+                        React.createElement(Td, { style: Object.assign(Object.assign({}, monoFont), { fontWeight: 700 }) }, fmtTLd(r.balance)),
+                        React.createElement(Td, { className: "text-right" }, r.removable ? React.createElement("button", { style: btnStyle("danger"), onClick: () => onRemove(r.id) }, "Sil") : null))),
+                    visible.length === ledger.rows.length ? React.createElement("tr", { key: "devir" },
+                        React.createElement(Td, { style: monoFont }, fmtDateTR(KASA_BASELINE.date)),
+                        React.createElement(Td, null, React.createElement(Pill, { tone: "neutral" }, "Devir")),
+                        React.createElement(Td, null, "Başlangıç tabanı (bu tarihten önceki hareketler dahildir)"),
+                        React.createElement(Td, null, ""), React.createElement(Td, null, ""),
+                        React.createElement(Td, { style: Object.assign(Object.assign({}, monoFont), { fontWeight: 700 }) }, fmtTLd(ledger.start)),
+                        React.createElement(Td, null)) : null))));
+}
+
+function GiderlerTab({ expenses, setExpenses, payouts, teachers, role, payments, students, kasaAdj }) {
     const [desc, setDesc] = useState("");
     const [amount, setAmount] = useState("");
     const [method, setMethod] = useState("nakit");
@@ -1937,6 +2013,9 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
     const visible = rangeActive
         ? sorted.filter(e => (!rangeFrom || e.date >= rangeFrom) && (!rangeTo || e.date <= rangeTo))
         : sorted.slice(0, 10);
+    const ledgerData = { payments, students, teachers, expenses, payouts, kasaAdj };
+    const ledgerNakit = buildKasaLedger("nakit", ledgerData);
+    const ledgerBanka = buildKasaLedger("banka", ledgerData);
     const thisMonth = monthKeyOf(date || toISODate(new Date()));
     
     const buAyGiderToplam = sorted.filter(e => e.type !== "gelir" && monthKeyOf(e.date) === thisMonth).reduce((a, e) => a + Number(e.amount || 0), 0);
@@ -1994,7 +2073,7 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
                 React.createElement("span", { className: "text-sm", style: { color: C.inkSoft } }, monthLabel(thisMonth) + " toplam gideri"),
                 React.createElement("span", { className: "text-lg", style: Object.assign(Object.assign({}, monoFont), { color: C.primary }) }, fmtTL(buAyGiderToplam)))),
 
-        sorted.length > 0 && React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 12, marginBottom: 12 }) },
+        React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { padding: 12, marginBottom: 12 }) },
             React.createElement("div", { className: "flex flex-wrap items-end gap-3" },
                 React.createElement("div", null,
                     React.createElement("label", { style: labelStyle }, "Başlangıç tarihi"),
@@ -2003,35 +2082,10 @@ function GiderlerTab({ expenses, setExpenses, payouts, teachers, role }) {
                     React.createElement("label", { style: labelStyle }, "Bitiş tarihi"),
                     React.createElement("input", { style: inputStyle, type: "date", value: rangeTo, onChange: e => setRangeTo(e.target.value) })),
                 rangeActive && React.createElement("button", { style: btnStyle("ghost"), onClick: () => { setRangeFrom(""); setRangeTo(""); } }, "Son 10'a dön")),
-            React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } },
-                rangeActive
-                    ? (visible.length + " hareket gösteriliyor" + (visible.length === 0 ? " — bu aralıkta kayıt yok." : "."))
-                    : "Son " + Math.min(10, sorted.length) + " hareket gösteriliyor. Daha eski hareketler için tarih aralığı seçin.")),
+            React.createElement("p", { className: "text-xs mt-2", style: { color: C.inkSoft } }, "Hesap hareketleri hem Nakit Kasa hem Banka için aynı tarih aralığıyla listelenir. Kalan tutar, aralıktan bağımsız olarak tüm geçmiş hareketler üzerinden hesaplanır.")),
 
-        sorted.length === 0 ? React.createElement(EmptyState, { text: "Henüz işlem kaydı yok." }) : (React.createElement("div", { style: Object.assign(Object.assign({}, cardStyle), { overflowX: "auto" }) },
-            React.createElement("table", { className: "w-full" },
-                React.createElement("thead", null,
-                    React.createElement("tr", null,
-                        React.createElement(Th, null, "Tarih"),
-                        React.createElement(Th, null, "İşlem Türü"),
-                        React.createElement(Th, null, "Ödeme Kanalı"),
-                        React.createElement(Th, null, "Açıklama"),
-                        React.createElement(Th, null, "Tutar"),
-                        React.createElement(Th, null))),
-                React.createElement("tbody", null, visible.map(e => (React.createElement("tr", { key: e.id },
-                    React.createElement(Td, { style: monoFont }, fmtDateTR(e.date)),
-                    React.createElement(Td, null, e.type === "gelir" 
-                        ? React.createElement(Pill, { tone: "success" }, "Harici Gelir")
-                        : (e.isPayout ? React.createElement(Pill, { tone: "warning" }, "Hakediş") : React.createElement(Pill, { tone: "danger" }, "Gider"))),
-                    React.createElement(Td, null, e.method === "nakit" 
-                        ? React.createElement(Pill, { tone: "accent" }, "Elden (Nakit)") 
-                        : React.createElement(Pill, { tone: "primary" }, "EFT / Havale")),
-                    React.createElement(Td, null, e.description),
-                    React.createElement(Td, { style: Object.assign(Object.assign({}, monoFont), { color: e.type === "gelir" ? C.success : C.ink, fontWeight: 600 }) }, 
-                        (e.type === "gelir" ? "+ " : "− ") + fmtTL(e.amount)),
-                    React.createElement(Td, { className: "text-right" }, e.isPayout
-                        ? null
-                        : React.createElement("button", { style: btnStyle("danger"), onClick: () => remove(e.id) }, "Sil")))))))))));
+        React.createElement(KasaLedgerCard, { title: "Nakit Kasa Hesap Hareketleri", subtitle: "Elden alınan aidatlar, nakit harici gelirler, nakit giderler ve elden ödenen hakedişler.", tone: "accent", ledger: ledgerNakit, rangeFrom, rangeTo, rangeActive, onRemove: remove }),
+        React.createElement(KasaLedgerCard, { title: "Banka Hesabı Hesap Hareketleri", subtitle: "EFT/Havale ile gelen aidatlar, bankaya eklenen harici gelirler, EFT ile ödenen gider ve hakedişler.", tone: "primary", ledger: ledgerBanka, rangeFrom, rangeTo, rangeActive, onRemove: remove })));
 }
 
 /* ---------------- Kâr / Zarar Rapor Tab (Doğrudan Gerçek Kasa Tabanlı Hesaplama) ---------------- */
@@ -2153,11 +2207,11 @@ function RaporTab({ payments, payouts, expenses, kasaAdj, setKasaAdj, canAdjust,
     // Belirlenen gerçek başlangıç tabanı: Ekim 2026 başı
     // Banka (EFT): 35.195 TL | Eldeki Nakit: 9.900 TL | Toplam: 45.095 TL
     const BASELINE = {
-        month: "2026-10",
-        date: "2026-10-04",
-        ts: 1791142633075,   // 4 Ekim 2026: bu andan önceki işlemler tabana dahildir, sayılmaz
-        banka: 35195.70,
-        nakit: 9900
+        month: KASA_BASELINE.month,
+        date: KASA_BASELINE.date,
+        ts: KASA_BASELINE.ts,   // 4 Ekim 2026: bu andan önceki işlemler tabana dahildir, sayılmaz
+        banka: KASA_BASELINE.banka,
+        nakit: KASA_BASELINE.nakit
     };
     function createdTsOf(rec) {
         const m = /^[a-z]+_([0-9a-z]{8})/.exec((rec && rec.id) || "");
