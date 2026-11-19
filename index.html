@@ -1501,7 +1501,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                             isNextWeekTelafi 
                                 ? React.createElement(Pill, { tone: "warning" }, "Haftaya") 
                                 : React.createElement(Pill, { tone: statusMeta[last.status].tone }, statusMeta[last.status].label)),
-                        React.createElement(Td, { className: "text-right whitespace-nowrap" }, isPaidLocked(last) ? React.createElement("span", { title: LOCK_MSG }, React.createElement(Pill, { tone: "neutral" }, "🔒 Hakediş ödendi")) : last.status === "bekliyor" ? (React.createElement("div", { className: "flex gap-1 justify-end flex-wrap" },
+                        React.createElement(Td, { className: "text-right whitespace-nowrap" }, (isNextWeekTelafi && isPaidLocked(anchorLesson)) ? React.createElement("span", { title: "Bu dersin yoklaması, telafi tarihi olan " + fmtDateTR(last.date) + " günü işaretlenecek." }, React.createElement(Pill, { tone: "warning" }, "Telafi gününde işaretlenecek")) : isPaidLocked(last) ? React.createElement("span", { title: LOCK_MSG }, React.createElement(Pill, { tone: "neutral" }, "🔒 Hakediş ödendi")) : last.status === "bekliyor" ? (React.createElement("div", { className: "flex gap-1 justify-end flex-wrap" },
                             React.createElement("button", { style: btnStyle("primary"), onClick: () => setStatus(last.id, "yapildi") }, "Yapıldı"),
                             React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(last.id, "mazeretli") }, "Mazeretli"),
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(last.id, "mazeretsiz") }, "Mazeretsiz"),
