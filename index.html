@@ -28,6 +28,29 @@
   .lesson-table tbody tr.lday-5 td{background:#EDF2FF;}
   .lesson-table tbody tr.lday-6 td{background:#F5EEFF;}
   .lesson-table tbody td:first-child{border-left:2px solid #4A3F5E !important;border-radius:10px 0 0 10px;}
+
+  /* Telefon: ders takvimi tablosu kartlara dönüşür, yana kaydırma gerekmez */
+  @media (max-width: 760px){
+    .lesson-table, .lesson-table tbody{display:block;width:100%;padding:0;}
+    .lesson-table thead{display:none;}
+    .lesson-table{border-spacing:0;}
+    .lesson-table tbody tr{display:block;margin:0 0 12px 0;border:2px solid #4A3F5E;border-radius:14px;overflow:hidden;}
+    .lesson-table tbody td{display:flex;justify-content:space-between;align-items:center;gap:12px;background:transparent !important;padding:8px 14px;white-space:normal !important;text-align:right;}
+    .lesson-table tbody td, .lesson-table tbody td:first-child, .lesson-table tbody td:last-child{border:none !important;border-radius:0 !important;}
+    .lesson-table tbody td[data-label]::before{content:attr(data-label);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#6B6478;flex:0 0 auto;text-align:left;}
+    .lesson-table tbody td.lesson-date{display:block;text-align:left;font-size:17px;padding:12px 14px;border-bottom:1px solid rgba(74,63,94,.25) !important;line-height:1.6;}
+    .lesson-table tbody td.lesson-actions{display:block;text-align:left;padding:10px 14px 14px;border-top:1px solid rgba(74,63,94,.25) !important;}
+    .lesson-table tbody td.lesson-actions > div{display:grid !important;grid-template-columns:1fr 1fr;gap:8px !important;}
+    .lesson-table tbody td.lesson-actions button, .lesson-table tbody td.lesson-actions a{min-height:42px;justify-content:center;font-size:14px;}
+    .lesson-table tbody td.lesson-actions > button{width:100%;}
+    .lesson-table tbody tr.lday-0{background:#FFF1F1;}
+    .lesson-table tbody tr.lday-1{background:#FFF6E8;}
+    .lesson-table tbody tr.lday-2{background:#FFFCE3;}
+    .lesson-table tbody tr.lday-3{background:#EFF9EC;}
+    .lesson-table tbody tr.lday-4{background:#E9F7F6;}
+    .lesson-table tbody tr.lday-5{background:#EDF2FF;}
+    .lesson-table tbody tr.lday-6{background:#F5EEFF;}
+  }
   .lesson-table tbody td:last-child{border-right:2px solid #4A3F5E !important;border-radius:0 10px 10px 0;}
   input:focus, select:focus, textarea:focus, button:focus-visible{ outline: 2px solid #C79A2B; outline-offset: 1px; }
 
@@ -289,7 +312,7 @@ function Modal({ title, onClose, children, wide }) {
 
 function EmptyState({ text }) { return React.createElement("div", { className: "text-center py-10 text-sm", style: { color: C.inkSoft } }, text); }
 function Th({ children }) { return React.createElement("th", { className: "text-left", style: { fontSize: 12, textTransform: "uppercase", letterSpacing: "0.04em", color: C.inkSoft, fontWeight: 600, padding: "8px 10px", borderBottom: "1px solid " + C.line } }, children); }
-function Td({ children, className, style, colSpan }) { return React.createElement("td", { className: className, colSpan: colSpan, style: Object.assign({ padding: 10, borderBottom: "1px solid " + C.line, fontSize: 14, verticalAlign: "middle" }, style) }, children); }
+function Td({ children, className, style, colSpan, label }) { return React.createElement("td", { className: className, colSpan: colSpan, "data-label": label, style: Object.assign({ padding: 10, borderBottom: "1px solid " + C.line, fontSize: 14, verticalAlign: "middle" }, style) }, children); }
 
 /* ---------------- Kursa Kayıt Ücreti → Ders Hakkı ---------------- */
 // Öğrenciye girilen "Kursa Kayıt Ücreti" = paket ücretidir (4 ders; haftada 2 gün alan ve ücreti 10.800 ₺ ve üzeri olanlarda 8 ders).
@@ -1490,18 +1513,18 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                     const anchorLesson = chain.slice().reverse().find(cl => weekKeyOf(fromISODate(cl.date)) === weekKey) || last;
                     const dayCls = "lday-" + ((fromISODate(anchorLesson.date).getDay() + 6) % 7);
                     return (React.createElement("tr", { key: first.id, className: dayCls },
-                        React.createElement(Td, { style: Object.assign({}, monoFont, { fontWeight: 800, fontSize: 16, color: "#1B1526", whiteSpace: "nowrap" }) }, ...dateNodes),
-                        React.createElement(Td, null, st.name),
-                        React.createElement(Td, null,
+                        React.createElement(Td, { className: "lesson-date", style: Object.assign({}, monoFont, { fontWeight: 800, fontSize: 16, color: "#1B1526", whiteSpace: "nowrap" }) }, ...dateNodes),
+                        React.createElement(Td, { label: "Öğrenci", style: { fontWeight: 700 } }, st.name),
+                        React.createElement(Td, { label: "Veli / Tel" },
                             st.parentName && React.createElement("div", { className: "text-xs", style: { color: C.inkSoft } }, st.parentName),
                             st.phone ? React.createElement("a", { href: "tel:" + st.phone, style: Object.assign(Object.assign({}, monoFont), { color: C.primary, textDecoration: "none" }) }, st.phone) : "—"),
-                        React.createElement(Td, null, tc ? tc.name : "—"),
-                        React.createElement(Td, null, st.courseType === "bireysel" ? "Bireysel" : "Grup"),
-                        React.createElement(Td, null,
+                        React.createElement(Td, { label: "Öğretmen" }, tc ? tc.name : "—"),
+                        React.createElement(Td, { label: "Tür" }, st.courseType === "bireysel" ? "Bireysel" : "Grup"),
+                        React.createElement(Td, { label: "Durum" },
                             isNextWeekTelafi 
                                 ? React.createElement(Pill, { tone: "warning" }, "Haftaya") 
                                 : React.createElement(Pill, { tone: statusMeta[last.status].tone }, statusMeta[last.status].label)),
-                        React.createElement(Td, { className: "text-right whitespace-nowrap" }, (isNextWeekTelafi && isPaidLocked(anchorLesson)) ? React.createElement("span", { title: "Bu dersin yoklaması, telafi tarihi olan " + fmtDateTR(last.date) + " günü işaretlenecek." }, React.createElement(Pill, { tone: "warning" }, "Telafi gününde işaretlenecek")) : isPaidLocked(last) ? React.createElement("span", { title: LOCK_MSG }, React.createElement(Pill, { tone: "neutral" }, "🔒 Hakediş ödendi")) : last.status === "bekliyor" ? (React.createElement("div", { className: "flex gap-1 justify-end flex-wrap" },
+                        React.createElement(Td, { className: "text-right lesson-actions" }, (isNextWeekTelafi && isPaidLocked(anchorLesson)) ? React.createElement("span", { title: "Bu dersin yoklaması, telafi tarihi olan " + fmtDateTR(last.date) + " günü işaretlenecek." }, React.createElement(Pill, { tone: "warning" }, "Telafi gününde işaretlenecek")) : isPaidLocked(last) ? React.createElement("span", { title: LOCK_MSG }, React.createElement(Pill, { tone: "neutral" }, "🔒 Hakediş ödendi")) : last.status === "bekliyor" ? (React.createElement("div", { className: "flex gap-1 justify-end flex-wrap" },
                             React.createElement("button", { style: btnStyle("primary"), onClick: () => setStatus(last.id, "yapildi") }, "Yapıldı"),
                             React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(last.id, "mazeretli") }, "Mazeretli"),
                             React.createElement("button", { style: btnStyle("danger"), onClick: () => setStatus(last.id, "mazeretsiz") }, "Mazeretsiz"),
