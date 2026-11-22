@@ -1510,6 +1510,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                     });
 
                     const isNextWeekTelafi = last.isTelafi && last.status === "bekliyor" && weekKeyOf(fromISODate(last.date)) > weekKey;
+                    const telafiPasOther = chain.length > 1 && last.isTelafi && last.status === "pas" && weekKeyOf(fromISODate(last.date)) !== weekKey;
 
                     const anchorLesson = chain.slice().reverse().find(cl => weekKeyOf(fromISODate(cl.date)) === weekKey) || last;
                     const dayCls = "lday-" + ((fromISODate(anchorLesson.date).getDay() + 6) % 7);
@@ -1524,7 +1525,7 @@ function DersTakvimiTab({ lessons, setLessons, students, ensureWeekLessons, teac
                         React.createElement(Td, { label: "Durum" },
                             isNextWeekTelafi 
                                 ? React.createElement(Pill, { tone: "warning" }, "Haftaya") 
-                                : React.createElement(Pill, { tone: statusMeta[last.status].tone }, statusMeta[last.status].label)),
+                                : React.createElement(Pill, { tone: statusMeta[last.status].tone }, telafiPasOther ? "Telafi pas" : statusMeta[last.status].label)),
                         React.createElement(Td, { className: "text-right lesson-actions" }, (isNextWeekTelafi && isPaidLocked(anchorLesson)) ? React.createElement("span", { title: "Bu dersin yoklaması, telafi tarihi olan " + fmtDateTR(last.date) + " günü işaretlenecek." }, React.createElement(Pill, { tone: "warning" }, "Telafi gününde işaretlenecek")) : isPaidLocked(last) ? React.createElement("span", { title: LOCK_MSG }, React.createElement(Pill, { tone: "neutral" }, "🔒 Hakediş ödendi")) : last.status === "bekliyor" ? (React.createElement("div", { className: "flex gap-1 justify-end flex-wrap" },
                             React.createElement("button", { style: btnStyle("primary"), onClick: () => setStatus(last.id, "yapildi") }, "Yapıldı"),
                             React.createElement("button", { style: btnStyle("accent"), onClick: () => setStatus(last.id, "mazeretli") }, "Mazeretli"),
@@ -1893,8 +1894,8 @@ function HakedisTab({ lessons, students, teachers, payouts, setPayouts, onlyTeac
                                 last.status === "mazeretsiz" && React.createElement(Pill, { tone: "danger" }, telafiOtherWeek ? "Telafide mazeretsiz" : (rowPay > 0 ? "Mazeretsiz (" + fmtTL(rowPay) + ")" : "Mazeretsiz (ücretsiz)")),
                                 isNextWeekTelafiHakedis && React.createElement(Pill, { tone: "warning" }, "Haftaya"),
                                 (!isNextWeekTelafiHakedis && last.status === "bekliyor") && React.createElement(Pill, null, "Bekliyor"),
-                                last.status === "pas" && React.createElement(Pill, { tone: "warning" }, "Pas (ücretsiz)")),
-                            React.createElement(Td, { style: monoFont }, rowPay > 0 ? fmtTL(rowPay) : (telafiOtherWeek ? React.createElement("span", { style: { fontSize: 12, fontFamily: "inherit", color: C.inkSoft } }, "Ücreti telafi gününe yansır") : "—")));
+                                last.status === "pas" && React.createElement(Pill, { tone: "warning" }, telafiOtherWeek ? "Telafi pas" : "Pas (ücretsiz)")),
+                            React.createElement(Td, { style: monoFont }, rowPay > 0 ? fmtTL(rowPay) : (telafiOtherWeek && last.status === "pas" ? fmtTL(0) : telafiOtherWeek ? React.createElement("span", { style: { fontSize: 12, fontFamily: "inherit", color: C.inkSoft } }, "Ücreti telafi gününe yansır") : "—")));
                     }))))));
         })))));
 }
